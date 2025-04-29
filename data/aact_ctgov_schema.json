@@ -1,0 +1,259 @@
+{"tables": [
+	{
+		"name":"sponsors",
+		"columns":[
+			{"name":"name", "type":"text"},
+			{"name":"id", "type":"integer"},
+			{"name":"lead_or_collaborator", "type":"text"},
+			{"name":"nct_id", "type":"text"},
+			{"name":"agency_class", "type":"ENUM(INDIV, OTHER_GOV, OTHER, NETWORK, AMBIG, UNKNOWN, INDUSTRY, NIH, FED)"}
+		]
+	},
+	{
+		"name":"browse_interventions",
+		"columns":[
+			{"name":"id", "type":"integer"},
+			{"name":"mesh_type", "type":"text"},
+			{"name":"downcase_mesh_term", "type":"text"},
+			{"name":"mesh_term", "type":"text"},
+			{"name":"nct_id", "type":"text"}
+		]
+	},
+	{
+		"name":"outcome_analysis_groups",
+		"columns":[
+			{"name":"outcome_analysis_id", "type":"integer"},
+			{"name":"ctgov_group_code", "type":"text"},
+			{"name":"id", "type":"integer"},
+			{"name":"result_group_id", "type":"integer"},
+			{"name":"nct_id", "type":"text"}
+		]
+	},
+	{
+		"name":"outcomes",
+		"columns":[
+			{"name":"outcome_type", "type":"text"},
+			{"name":"id", "type":"integer"},
+			{"name":"units_analyzed", "type":"text"},
+			{"name":"time_frame", "type":"text"},
+			{"name":"anticipated_posting_date", "type":"date"},
+			{"name":"description", "type":"text"},
+			{"name":"param_type", "type":"text"},
+			{"name":"dispersion_type", "type":"text"},
+			{"name":"nct_id", "type":"text"},
+			{"name":"population", "type":"text"},
+			{"name":"units", "type":"text"},
+			{"name":"anticipated_posting_month_year", "type":"text"},
+			{"name":"title", "type":"text"}
+		]
+	},
+	{
+		"name":"keywords",
+		"columns":[
+			{"name":"id", "type":"integer"},
+			{"name":"downcase_name", "type":"text"},
+			{"name":"name", "type":"text"},
+			{"name":"nct_id", "type":"text"}
+		]
+	},
+	{
+		"name":"outcome_analyses",
+		"columns":[
+			{"name":"ci_upper_limit_na_comment", "type":"text"},
+			{"name":"p_value_raw", "type":"text"},
+			{"name":"non_inferiority_type", "type":"ENUM(OTHER, NON_INFERIORITY, SUPERIORITY_OR_OTHER, NON_INFERIORITY_OR_EQUIVALENCE_LEGACY, NON_INFERIORITY_OR_EQUIVALENCE, SUPERIORITY, EQUIVALENCE, SUPERIORITY_OR_OTHER_LEGACY)"},
+			{"name":"estimate_description", "type":"text"},
+			{"name":"id", "type":"integer"},
+			{"name":"ci_lower_limit_raw", "type":"text"},
+			{"name":"non_inferiority_description", "type":"text"},
+			{"name":"method", "type":"text"},
+			{"name":"other_analysis_description", "type":"text"},
+			{"name":"dispersion_type", "type":"text"},
+			{"name":"nct_id", "type":"text"},
+			{"name":"param_value", "type":"numeric"},
+			{"name":"method_description", "type":"text"},
+			{"name":"outcome_id", "type":"integer"},
+			{"name":"p_value", "type":"double precision"},
+			{"name":"ci_percent", "type":"numeric"},
+			{"name":"param_type", "type":"text"},
+			{"name":"ci_upper_limit_raw", "type":"text"},
+			{"name":"ci_lower_limit", "type":"numeric"},
+			{"name":"dispersion_value", "type":"numeric"},
+			{"name":"ci_upper_limit", "type":"numeric"},
+			{"name":"ci_n_sides", "type":"text"},
+			{"name":"p_value_modifier", "type":"text"},
+			{"name":"p_value_description", "type":"text"},
+			{"name":"groups_description", "type":"text"}
+		]
+	},
+	{
+		"name":"id_information",
+		"columns":[
+			{"name":"id", "type":"integer"},
+			{"name":"id_source", "type":"text"},
+			{"name":"id_value", "type":"text"},
+			{"name":"id_link", "type":"text"},
+			{"name":"id_type_description", "type":"text"},
+			{"name":"nct_id", "type":"text"},
+			{"name":"id_type", "type":"text"}
+		]
+	},
+	{
+		"name":"design_group_interventions",
+		"columns":[
+			{"name":"id", "type":"integer"},
+			{"name":"intervention_id", "type":"integer"},
+			{"name":"design_group_id", "type":"integer"},
+			{"name":"nct_id", "type":"text"}
+		]
+	},
+	{
+		"name":"eligibilities",
+		"columns":[
+			{"name":"gender_description", "type":"text"},
+			{"name":"criteria", "type":"text"},
+			{"name":"id", "type":"integer"},
+			{"name":"older_adult", "type":"boolean"},
+			{"name":"gender", "type":"text"},
+			{"name":"minimum_age", "type":"text"},
+			{"name":"healthy_volunteers", "type":"boolean"},
+			{"name":"gender_based", "type":"boolean"},
+			{"name":"nct_id", "type":"text"},
+			{"name":"population", "type":"text"},
+			{"name":"adult", "type":"boolean"},
+			{"name":"sampling_method", "type":"ENUM(PROBABILITY_SAMPLE, NON_PROBABILITY_SAMPLE)"},
+			{"name":"child", "type":"boolean"},
+			{"name":"maximum_age", "type":"text"}
+		]
+	},
+	{
+		"name":"outcome_measurements",
+		"columns":[
+			{"name":"classification", "type":"text"},
+			{"name":"id", "type":"integer"},
+			{"name":"ctgov_group_code", "type":"text"},
+			{"name":"explanation_of_na", "type":"text"},
+			{"name":"result_group_id", "type":"integer"},
+			{"name":"category", "type":"text"},
+			{"name":"dispersion_upper_limit", "type":"numeric"},
+			{"name":"title", "type":"text"},
+			{"name":"param_value", "type":"text"},
+			{"name":"units", "type":"text"},
+			{"name":"dispersion_type", "type":"text"},
+			{"name":"nct_id", "type":"text"},
+			{"name":"dispersion_value_num", "type":"numeric"},
+			{"name":"dispersion_upper_limit_raw", "type":"text"},
+			{"name":"dispersion_lower_limit_raw", "type":"text"},
+			{"name":"outcome_id", "type":"integer"},
+			{"name":"description", "type":"text"},
+			{"name":"param_type", "type":"text"},
+			{"name":"param_value_num", "type":"numeric"},
+			{"name":"dispersion_value", "type":"text"},
+			{"name":"dispersion_lower_limit", "type":"numeric"}
+		]
+	},
+	{
+		"name":"studies",
+		"columns":[
+		]
+	},
+	{
+		"name":"drop_withdrawals",
+		"columns":[
+			{"name":"period", "type":"text"},
+			{"name":"reason", "type":"text"},
+			{"name":"ctgov_group_code", "type":"text"},
+			{"name":"id", "type":"integer"},
+			{"name":"count_units", "type":"integer"},
+			{"name":"count", "type":"integer"},
+			{"name":"result_group_id", "type":"integer"},
+			{"name":"reason_comment", "type":"text"},
+			{"name":"nct_id", "type":"text"},
+			{"name":"drop_withdraw_comment", "type":"text"}
+		]
+	},
+	{
+		"name":"countries",
+		"columns":[
+			{"name":"id", "type":"integer"},
+			{"name":"name", "type":"text"},
+			{"name":"nct_id", "type":"text"},
+			{"name":"removed", "type":"boolean"}
+		]
+	},
+	{
+		"name":"reported_events",
+		"columns":[
+			{"name":"id", "type":"integer"},
+			{"name":"ctgov_group_code", "type":"text"},
+			{"name":"subjects_at_risk", "type":"integer"},
+			{"name":"result_group_id", "type":"integer"},
+			{"name":"subjects_affected", "type":"integer"},
+			{"name":"event_count", "type":"integer"},
+			{"name":"assessment", "type":"text"},
+			{"name":"nct_id", "type":"text"},
+			{"name":"frequency_threshold", "type":"integer"},
+			{"name":"event_type", "type":"text"},
+			{"name":"vocab", "type":"text"},
+			{"name":"organ_system", "type":"text"},
+			{"name":"default_vocab", "type":"text"},
+			{"name":"default_assessment", "type":"text"},
+			{"name":"time_frame", "type":"text"},
+			{"name":"adverse_event_term", "type":"text"},
+			{"name":"description", "type":"text"}
+		]
+	},
+	{
+		"name":"facilities",
+		"columns":[
+			{"name":"city", "type":"text"},
+			{"name":"country", "type":"text"},
+			{"name":"name", "type":"text"},
+			{"name":"state", "type":"text"},
+			{"name":"id", "type":"integer"},
+			{"name":"longitude", "type":"numeric"},
+			{"name":"status", "type":"ENUM(WITHDRAWN, ENROLLING_BY_INVITATION, RECRUITING, TERMINATED, NOT_YET_RECRUITING, SUSPENDED, ACTIVE_NOT_RECRUITING, AVAILABLE, COMPLETED)"},
+			{"name":"latitude", "type":"numeric"},
+			{"name":"nct_id", "type":"text"},
+			{"name":"zip", "type":"text"}
+		]
+	},
+	{
+		"name":"brief_summaries",
+		"columns":[
+			{"name":"description", "type":"text"},
+			{"name":"id", "type":"integer"},
+			{"name":"nct_id", "type":"text"}
+		]
+	},
+	{
+		"name":"browse_conditions",
+		"columns":[
+			{"name":"id", "type":"integer"},
+			{"name":"mesh_type", "type":"text"},
+			{"name":"downcase_mesh_term", "type":"text"},
+			{"name":"mesh_term", "type":"text"},
+			{"name":"nct_id", "type":"text"}
+		]
+	},
+	{
+		"name":"designs",
+		"columns":[
+			{"name":"intervention_model_description", "type":"text"},
+			{"name":"intervention_model", "type":"text"},
+			{"name":"subject_masked", "type":"boolean"},
+			{"name":"outcomes_assessor_masked", "type":"boolean"},
+			{"name":"masking", "type":"text"},
+			{"name":"id", "type":"integer"},
+			{"name":"observational_model", "type":"ENUM(OTHER, CASE_CROSSOVER, ECOLOGIC_OR_COMMUNITY, NATURAL_HISTORY, DEFINED_POPULATION, CASE_CONTROL, COHORT, FAMILY_BASED, CASE_ONLY)"},
+			{"name":"masking_description", "type":"text"},
+			{"name":"time_perspective", "type":"text"},
+			{"name":"investigator_masked", "type":"boolean"},
+			{"name":"nct_id", "type":"text"},
+			{"name":"primary_purpose", "type":"ENUM(BASIC_SCIENCE, SCREENING, OTHER, PREVENTION, DIAGNOSTIC, DEVICE_FEASIBILITY, ECT, TREATMENT, SUPPORTIVE_CARE, HEALTH_SERVICES_RESEARCH)"},
+			{"name":"allocation", "type":"text"},
+			{"name":"caregiver_masked", "type":"boolean"}
+		]
+	}
+]
+}

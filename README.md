@@ -1,0 +1,13 @@
+## HippoView
+
+An AI-powered clinical trial explorer
+
+1. Knowledge graph
+    - From AACT(a relational database for clinical trial) and through ETL to build knowledge graph with graph database(neo4j)
+2. GraphRAG
+    - based on knowledge graph to build GraphRAG (langchain, DSPy)
+3. Agent
+    - based on GraphRAG, build a multi-agent structure to retreive data and generate code for the analysis or straight to execute it and return results. (langchain, DSPy)
+
+
+Pilot: A subset of AACT db　
