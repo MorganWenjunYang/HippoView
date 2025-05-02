@@ -2,20 +2,123 @@
 
 import os
 import sys
-from typing import List, Dict, Any
+import argparse
+from typing import List, Dict, Any, Optional
 from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.documents import Document
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.embeddings import Embeddings
 
 # Add parent directory to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import MongoDB connection from utils
 from data.utils import connect_to_mongo
+
+def get_llm_model(provider: str = "openai", model_name: Optional[str] = None, temperature: float = 0.2) -> BaseChatModel:
+    """Get the LLM model based on the provider.
+    
+    Args:
+        provider: The LLM provider (openai, anthropic, huggingface, mistral, gemini)
+        model_name: The specific model to use
+        temperature: The temperature for generation
+        
+    Returns:
+        A LangChain chat model
+    """
+    if provider == "openai":
+        from langchain_openai import ChatOpenAI
+        if not os.getenv("OPENAI_API_KEY"):
+            raise ValueError("OPENAI_API_KEY environment variable not set")
+        return ChatOpenAI(model_name=model_name or "gpt-3.5-turbo", temperature=temperature)
+    
+    elif provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+        return ChatAnthropic(model_name=model_name or "claude-3-sonnet-20240229", temperature=temperature)
+    
+    elif provider == "huggingface":
+        from langchain_huggingface import HuggingFaceEndpoint
+        if not os.getenv("HUGGINGFACE_API_KEY"):
+            raise ValueError("HUGGINGFACE_API_KEY environment variable not set")
+        return HuggingFaceEndpoint(
+            endpoint_url=os.getenv("HUGGINGFACE_ENDPOINT_URL", ""),
+            huggingfacehub_api_token=os.getenv("HUGGINGFACE_API_KEY"),
+            task="text-generation",
+            model_kwargs={"temperature": temperature, "max_length": 512}
+        )
+    
+    elif provider == "mistral":
+        from langchain_mistralai.chat_models import ChatMistralAI
+        if not os.getenv("MISTRAL_API_KEY"):
+            raise ValueError("MISTRAL_API_KEY environment variable not set")
+        return ChatMistralAI(model_name=model_name or "mistral-small", temperature=temperature)
+    
+    elif provider == "gemini":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        if not os.getenv("GOOGLE_API_KEY"):
+            raise ValueError("GOOGLE_API_KEY environment variable not set")
+        return ChatGoogleGenerativeAI(model_name=model_name or "gemini-pro", temperature=temperature)
+    
+    else:
+        raise ValueError(f"Unsupported LLM provider: {provider}")
+
+def get_embedding_model(provider: str = "huggingface") -> Embeddings:
+    """Get embedding model based on provider.
+    
+    Args:
+        provider: The embedding provider (openai, huggingface, cohere, mistral, etc.)
+        
+    Returns:
+        A LangChain embeddings model
+    """
+    # Try to use specified provider
+    try:
+        if provider == "openai":
+            from langchain_openai import OpenAIEmbeddings
+            if not os.getenv("OPENAI_API_KEY"):
+                raise ValueError("OPENAI_API_KEY environment variable not set")
+            return OpenAIEmbeddings()
+        
+        elif provider == "huggingface":
+            from langchain_huggingface import HuggingFaceEmbeddings
+            # These models run locally without API access
+            model_name = os.getenv("HF_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+            try:
+                return HuggingFaceEmbeddings(model_name=model_name)
+            except Exception as e:
+                print(f"Error loading {model_name}: {e}")
+                print("Trying alternative local model...")
+                return HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+        
+        elif provider == "cohere":
+            from langchain_cohere import CohereEmbeddings
+            if not os.getenv("COHERE_API_KEY"):
+                raise ValueError("COHERE_API_KEY environment variable not set")
+            return CohereEmbeddings(model="embed-english-v3.0")
+        
+        elif provider == "mistral":
+            return get_embedding_model("huggingface")
+        
+        else:
+            raise ValueError(f"Unsupported embedding provider: {provider}")
+            
+    except (ImportError, ValueError) as e:
+        print(f"Warning: Could not use {provider} embeddings: {str(e)}")
+        print("Falling back to HuggingFace sentence-transformers (local) embeddings")
+        
+        # Fallback to HuggingFace (requires no API key)
+        try:
+            from langchain_huggingface import HuggingFaceEmbeddings
+            return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        except ImportError:
+            print("Error: Could not load HuggingFace embeddings. Please install with:")
+            print("pip install langchain-huggingface sentence-transformers")
+            raise
 
 def fetch_trials_from_mongo():
     """Fetch clinical trial data from MongoDB."""
@@ -43,55 +146,80 @@ def transform_trials_to_documents(trials: List[Dict[Any, Any]]) -> List[Document
     documents = []
     
     for trial in trials:
-        # Create a content string from the trial data
-        content = f"""
-        NCT ID: {trial.get('nct_id', 'N/A')}
-        Title: {trial.get('brief_title', 'N/A')}
-        Status: {trial.get('overall_status', 'N/A')}
-        Phase: {trial.get('phase', 'N/A')}
-        Study Type: {trial.get('study_type', 'N/A')}
-        
-        Brief Summary: {trial.get('brief_summary', 'N/A')}
-        
-        Start Date: {trial.get('start_date', 'N/A')}
-        Completion Date: {trial.get('completion_date', 'N/A')}
-        
-        Eligibility Criteria: {trial.get('criteria', 'N/A')}
-        Gender: {trial.get('gender', 'N/A')}
-        Min Age: {trial.get('minimum_age', 'N/A')}
-        Max Age: {trial.get('maximum_age', 'N/A')}
-        
-        Conditions: {', '.join(trial.get('condition', [])) if isinstance(trial.get('condition', []), list) else trial.get('condition', 'N/A')}
-        Interventions: {', '.join(trial.get('intervention', [])) if isinstance(trial.get('intervention', []), list) else trial.get('intervention', 'N/A')}
-        """
-        
-        # Handle outcomes if available
-        if 'outcomes' in trial and trial['outcomes']:
-            content += "\nOutcomes:\n"
-            for outcome in trial['outcomes']:
-                content += f"- Type: {outcome.get('outcome_type', 'N/A')}\n"
-                content += f"  Title: {outcome.get('title', 'N/A')}\n"
-                content += f"  Description: {outcome.get('description', 'N/A')}\n"
-                content += f"  Time Frame: {outcome.get('time_frame', 'N/A')}\n"
-        
-        # Create Document object
-        doc = Document(
-            page_content=content,
-            metadata={
-                "nct_id": trial.get('nct_id', 'N/A'),
-                "title": trial.get('brief_title', 'N/A'),
-                "status": trial.get('overall_status', 'N/A')
-            }
-        )
-        documents.append(doc)
+        try:
+            # Handle conditions - ensure it's a list or convert to string
+            conditions = trial.get('condition', [])
+            if isinstance(conditions, list):
+                conditions_str = ', '.join(conditions)
+            elif conditions is None:
+                conditions_str = 'N/A'
+            else:
+                conditions_str = str(conditions)
+                
+            # Handle interventions - ensure it's a list or convert to string
+            interventions = trial.get('intervention', [])
+            if isinstance(interventions, list):
+                interventions_str = ', '.join(interventions)
+            elif interventions is None:
+                interventions_str = 'N/A'
+            else:
+                interventions_str = str(interventions)
+            
+            # Create a content string from the trial data
+            content = f"""
+            NCT ID: {trial.get('nct_id', 'N/A')}
+            Title: {trial.get('brief_title', 'N/A')}
+            Status: {trial.get('overall_status', 'N/A')}
+            Phase: {trial.get('phase', 'N/A')}
+            Study Type: {trial.get('study_type', 'N/A')}
+            
+            Brief Summary: {trial.get('brief_summary', 'N/A')}
+            
+            Start Date: {trial.get('start_date', 'N/A')}
+            Completion Date: {trial.get('completion_date', 'N/A')}
+            
+            Eligibility Criteria: {trial.get('criteria', 'N/A')}
+            Gender: {trial.get('gender', 'N/A')}
+            Min Age: {trial.get('minimum_age', 'N/A')}
+            Max Age: {trial.get('maximum_age', 'N/A')}
+            
+            Conditions: {conditions_str}
+            Interventions: {interventions_str}
+            """
+            
+            # Handle outcomes if available
+            if 'outcomes' in trial and trial['outcomes'] and isinstance(trial['outcomes'], list):
+                content += "\nOutcomes:\n"
+                for outcome in trial['outcomes']:
+                    if isinstance(outcome, dict):
+                        content += f"- Type: {outcome.get('outcome_type', 'N/A')}\n"
+                        content += f"  Title: {outcome.get('title', 'N/A')}\n"
+                        content += f"  Description: {outcome.get('description', 'N/A')}\n"
+                        content += f"  Time Frame: {outcome.get('time_frame', 'N/A')}\n"
+            
+            # Create Document object
+            doc = Document(
+                page_content=content,
+                metadata={
+                    "nct_id": trial.get('nct_id', 'N/A'),
+                    "title": trial.get('brief_title', 'N/A'),
+                    "status": trial.get('overall_status', 'N/A')
+                }
+            )
+            documents.append(doc)
+            
+        except Exception as e:
+            print(f"Error processing trial {trial.get('nct_id', 'unknown')}: {str(e)}")
+            # Continue with the next trial instead of failing completely
+            continue
     
     return documents
 
-def create_vectorstore(documents: List[Document]):
-    """Create a vector store from documents using OpenAI embeddings."""
+def create_vectorstore(documents: List[Document], embedding_provider: str = "mistral"):
+    """Create a vector store from documents using specified embeddings."""
     try:
         # Initialize the embedding model
-        embeddings = OpenAIEmbeddings()
+        embeddings = get_embedding_model(provider=embedding_provider)
         
         # Create the vector store
         vectorstore = FAISS.from_documents(documents, embeddings)
@@ -105,7 +233,7 @@ def setup_retriever(vectorstore):
     """Set up the retriever from a vector store."""
     return vectorstore.as_retriever(search_kwargs={"k": 5})
 
-def create_rag_chain(retriever):
+def create_rag_chain(retriever, llm_provider: str = "mistral", model_name: Optional[str] = None, temperature: float = 0.2):
     """Create a RAG chain with the retriever."""
     # Define the prompt template
     template = """
@@ -123,7 +251,7 @@ def create_rag_chain(retriever):
     prompt = ChatPromptTemplate.from_template(template)
     
     # Setup the language model
-    model = ChatOpenAI(temperature=0.2)
+    model = get_llm_model(provider=llm_provider, model_name=model_name, temperature=temperature)
     
     # Setup the RAG chain
     rag_chain = (
@@ -135,58 +263,109 @@ def create_rag_chain(retriever):
     
     return rag_chain
 
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Clinical Trials RAG System")
+    parser.add_argument("--llm", default="mistral", 
+                      choices=["openai", "anthropic", "huggingface", "mistral", "gemini"],
+                      help="LLM provider to use")
+    parser.add_argument("--embedding", default="huggingface", 
+                      choices=["openai", "huggingface", "cohere", "mistral"],
+                      help="Embedding provider to use")
+    parser.add_argument("--model", default=None, 
+                      help="Specific model name (provider-dependent)")
+    parser.add_argument("--temperature", type=float, default=0.2, 
+                      help="Model temperature (0-1)")
+    parser.add_argument("--hf-embedding-model", default="sentence-transformers/all-MiniLM-L6-v2",
+                      help="HuggingFace embedding model to use")
+    return parser.parse_args()
+
 def main():
     """Main function to set up and test the RAG system."""
-    # Check if OPENAI_API_KEY is set
-    if not os.getenv("OPENAI_API_KEY"):
-        print("OPENAI_API_KEY environment variable not set. Please set it to use this script.")
-        print("You can set it temporarily with: export OPENAI_API_KEY='your-key-here'")
-        return
+    # Parse command line arguments
+    args = parse_arguments()
+    
+    try:
+        # Fetch trials from MongoDB
+        print("Fetching trials from MongoDB...")
+        trials = fetch_trials_from_mongo()
         
-    # Fetch trials from MongoDB
-    print("Fetching trials from MongoDB...")
-    trials = fetch_trials_from_mongo()
-    
-    if not trials:
-        print("No trials found in MongoDB. Please check your database connection.")
-        return
-    
-    print(f"Found {len(trials)} trials in MongoDB.")
-    
-    # Transform trials to documents
-    print("Transforming trials to documents...")
-    documents = transform_trials_to_documents(trials)
-    
-    # Create vector store
-    print("Creating vector store...")
-    vectorstore = create_vectorstore(documents)
-    
-    if not vectorstore:
-        print("Failed to create vector store. Please check your OpenAI API key.")
-        return
-    
-    # Setup retriever
-    retriever = setup_retriever(vectorstore)
-    
-    # Create RAG chain
-    rag_chain = create_rag_chain(retriever)
-    
-    # Interactive query loop
-    print("\n=== Clinical Trials RAG System ===")
-    print("Type 'exit' to quit")
-    
-    while True:
-        query = input("\nEnter your question about clinical trials: ")
+        if not trials:
+            print("No trials found in MongoDB. Please check your database connection.")
+            return
         
-        if query.lower() == 'exit':
-            break
+        print(f"Found {len(trials)} trials in MongoDB.")
+        
+        # Transform trials to documents
+        print("Transforming trials to documents...")
+        documents = transform_trials_to_documents(trials)
+        
+        # Create vector store
+        print(f"Creating vector store using {args.embedding} embeddings...")
+        vectorstore = create_vectorstore(documents, embedding_provider=args.embedding)
+        
+        if not vectorstore:
+            print(f"Failed to create vector store. Trying with fallback embedding model...")
+            vectorstore = create_vectorstore(documents, embedding_provider="huggingface")
             
+        if not vectorstore:
+            print("Failed to create vector store even with fallback. Exiting.")
+            return
+        
+        # Setup retriever
+        retriever = setup_retriever(vectorstore)
+        
+        # Create RAG chain
+        print(f"Setting up RAG chain with {args.llm} model...")
         try:
-            # Get response from RAG chain
-            response = rag_chain.invoke(query)
-            print("\nAnswer:", response)
+            rag_chain = create_rag_chain(
+                retriever, 
+                llm_provider=args.llm,
+                model_name=args.model,
+                temperature=args.temperature
+            )
         except Exception as e:
-            print(f"Error processing query: {str(e)}")
+            print(f"Failed to create RAG chain with {args.llm}: {str(e)}")
+            print("Trying with fallback to OpenAI model...")
+            
+            if os.getenv("OPENAI_API_KEY"):
+                rag_chain = create_rag_chain(
+                    retriever, 
+                    llm_provider="openai",
+                    model_name=None,
+                    temperature=args.temperature
+                )
+            else:
+                print("Error: Could not use fallback LLM. Please set an API key.")
+                return
+        
+        # Interactive query loop
+        print("\n=== Clinical Trials RAG System ===")
+        print(f"Using LLM: {args.llm}{f' ({args.model})' if args.model else ''}")
+        print(f"Using Embeddings: {args.embedding}")
+        if args.embedding == "huggingface":
+            print(f"HuggingFace Embedding Model: {os.getenv('HF_EMBEDDING_MODEL')}")
+        print("Type 'exit' to quit")
+        
+        while True:
+            query = input("\nEnter your question about clinical trials: ")
+            
+            if query.lower() == 'exit':
+                break
+                
+            try:
+                # Get response from RAG chain
+                response = rag_chain.invoke(query)
+                print("\nAnswer:", response)
+            except Exception as e:
+                print(f"Error processing query: {str(e)}")
+    
+    except ValueError as e:
+        print(f"Error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()
