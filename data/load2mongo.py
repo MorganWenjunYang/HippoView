@@ -141,7 +141,7 @@ def load2mongo(nct_ids):
             interventions_df = pd.read_sql_query(interventions_query, engine, params=params)
             keywords_df = pd.read_sql_query(keywords_query, engine, params=params)
             outcomes_df = pd.read_sql_query(outcomes_query, engine, params=params)
-            # sponsors_df = pd.read_sql_query(sponsors_query, engine, params=params)
+            sponsors_df = pd.read_sql_query(sponsors_query, engine, params=params)
         except Exception as e:
             print(f"Error executing SQL queries: {str(e)}")
             return
@@ -191,16 +191,16 @@ def load2mongo(nct_ids):
             outcomes_df = pd.DataFrame(outcomes_list)
             merged_df = merged_df.merge(outcomes_df, on='nct_id', how='left')
         
-        # # Handle sponsors if available
-        # if not sponsors_df.empty:
-        #     sponsors_list = []
-        #     for nct_id, group in sponsors_df.groupby('nct_id'):
-        #         sponsors_list.append({
-        #             'nct_id': nct_id,
-        #             'sponsors': group.drop('nct_id', axis=1).to_dict('records')
-        #         })
-        #     sponsors_df = pd.DataFrame(sponsors_list)
-        #     merged_df = merged_df.merge(sponsors_df, on='nct_id', how='left')
+        # Handle sponsors if available
+        if not sponsors_df.empty:
+            sponsors_list = []
+            for nct_id, group in sponsors_df.groupby('nct_id'):
+                sponsors_list.append({
+                    'nct_id': nct_id,
+                    'sponsors': group.drop('nct_id', axis=1).to_dict('records')
+                })
+            sponsors_df = pd.DataFrame(sponsors_list)
+            merged_df = merged_df.merge(sponsors_df, on='nct_id', how='left')
         
         # Convert DataFrame to list of dictionaries
         trials_data = merged_df.to_dict('records')
@@ -233,6 +233,6 @@ if __name__ == "__main__":
     # Read NCT IDs from trialgpt.studies_list.csv
     studies_df = pd.read_csv(Path("./data/raw/trialgpt/trialgpt.studies_list.csv"))  # Get top 5 NCT IDs
        
-    nct_ids = studies_df['nct_id'].head(100).tolist()
+    nct_ids = studies_df['nct_id'].head(1000).tolist()
     print(f"fetching {len(nct_ids)} trials: {nct_ids}")
     load2mongo(nct_ids)
