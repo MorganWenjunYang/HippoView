@@ -1,3 +1,5 @@
 /data/raw
 /venv
 .env
+trial_search/
+experiments_records/
