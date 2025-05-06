@@ -3,6 +3,7 @@ import psycopg2
 from dotenv import load_dotenv
 import os
 from pymongo import MongoClient
+from bson.json_util import dumps
 
 
 load_dotenv(".env")
@@ -80,19 +81,25 @@ def fetch_all_documents(collection):
     client = connect_to_mongo()
     db = client["clinical_trials"]
     collection = db["trialgpt_trials"]
-    return collection.find()
+    cursor = collection.find()
+    json_docs = [dumps(doc) for doc in cursor]
+    return json_docs
 
 def fetch_document_by_nct_id(nct_id):
     client = connect_to_mongo()
     db = client["clinical_trials"]
     collection = db["trialgpt_trials"]
-    return collection.find_one({"nct_id": nct_id})
+    cursor = collection.find_one({"nct_id": nct_id})
+    json_doc = dumps(cursor)
+    return json_doc
 
 def fetch_documents_by_sponsor_name(sponsor_name):
     client = connect_to_mongo()
     db = client["clinical_trials"]
     collection = db["trialgpt_trials"]
-    return collection.find({"sponsors.name": sponsor_name})
+    cursor = collection.find({"sponsors.name": sponsor_name})
+    json_docs = [dumps(doc) for doc in cursor]
+    return json_docs
 
 # NEO4J DB
 

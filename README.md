@@ -16,4 +16,4 @@ Pilot: A subset of AACT db　
 Dairy:
 * May 6: 
     - running into issues when try trial2vec, mostly due to cuda
-    - how to do json data embedding is a problem
+    - how to do json data embedding is a problem -> json2markdown/json2str
