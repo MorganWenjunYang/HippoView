@@ -75,6 +75,24 @@ def connect_to_mongo():
     except Exception as e:
         print(f"Error connecting to MongoDB: {e}")
         return None
+    
+def fetch_all_documents(collection):
+    client = connect_to_mongo()
+    db = client["clinical_trials"]
+    collection = db["trialgpt_trials"]
+    return collection.find()
+
+def fetch_document_by_nct_id(nct_id):
+    client = connect_to_mongo()
+    db = client["clinical_trials"]
+    collection = db["trialgpt_trials"]
+    return collection.find_one({"nct_id": nct_id})
+
+def fetch_documents_by_sponsor_name(sponsor_name):
+    client = connect_to_mongo()
+    db = client["clinical_trials"]
+    collection = db["trialgpt_trials"]
+    return collection.find({"sponsors.name": sponsor_name})
 
 # NEO4J DB
 
