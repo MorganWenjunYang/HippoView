@@ -3,6 +3,7 @@
 from langchain_community.embeddings import HuggingFaceEmbeddings
 # from langchain_community.document_loaders import MongoDBLoader
 from langchain_core.embeddings import Embeddings
+from trial2vec_adapter import t2v_embed_documents, mongodb_data_adaptor
 import os
 
 # def embed_documents_hf(embedding_model):
@@ -31,21 +32,21 @@ def get_embedding_model(provider: str = "huggingface") -> Embeddings:
     # Try to use specified provider
     try:
         if provider == "biobert":
-            # from sentence_transformers import SentenceTransformer
-            # biobert = SentenceTransformer("pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb")
-            # return biobert
             from langchain_huggingface import HuggingFaceEmbeddings
             return HuggingFaceEmbeddings(model_name="pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb")
         # elif provider == "topo":
         #     pass
         elif provider == "trial2vec":
-            pass
+            return t2v_embed_documents
+        
         elif provider == "openai":
             from langchain_openai import OpenAIEmbeddings
             if not os.getenv("OPENAI_API_KEY"):
                 raise ValueError("OPENAI_API_KEY environment variable not set")
             return OpenAIEmbeddings()
-        
+        elif provider == "BGE-M3":
+            from langchain_huggingface import HuggingFaceEmbeddings
+            return HuggingFaceEmbeddings(model_name="BAAI/bge-m3")        
         elif provider == "huggingface":
             from langchain_huggingface import HuggingFaceEmbeddings
             # These models run locally without API access
@@ -83,8 +84,5 @@ def get_embedding_model(provider: str = "huggingface") -> Embeddings:
             raise
 
 if __name__ == "__main__":
-    # embed_documents_hf("sentence-transformers/all-MiniLM-L6-v2")
-    # embed_documents_hf("sentence-transformers/all-mpnet-base-v2")
-    # etc
     pass
 

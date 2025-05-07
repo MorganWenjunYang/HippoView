@@ -17,22 +17,13 @@ model = Trial2Vec(device="cpu")
 model.from_pretrained()
 
 data = load_demo_data()
-print(data)
-
 # Contains trial documents
-test_data = {'x': data['x']} 
-
-# Make prediction
-pred = model.predict(test_data)
-emb = model.encode(data['x'])
+test_data = {'x': data['x'].iloc[0:2]}
+print('test_data', test_data['x']['reference'])
+print('encode first w trials',model.encode(test_data['x']))
 
 
-
-# from trial2vec import download_embedding
-# import torch
-# import numpy
-# torch.serialization.add_safe_globals([numpy.core.multiarray._reconstruct])
-# torch.serialization.safe_globals([numpy.ndarray])
-# trialembs = download_embedding()
-# print(len(trialembs))
-# trialembs.search_topk('NCT01724996', k=5)
+trialembs = download_embedding()
+print(len(trialembs))
+x=trialembs.search_topk('NCT01724996', k=5)
+print('top 5', x)

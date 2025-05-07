@@ -3,3 +3,5 @@
 .env
 trial_search/
 experiments_records/
+.DS_Store
+demo_data/
