@@ -1,0 +1,115 @@
+clinical trial:
+    represented_as: node
+    preferred_id: id
+    input_label: study
+    is_a: clincal trial
+    properties:
+        nct_id: str
+        study_type: str
+        status: str
+        phase: str
+        start_date: date
+        completion_date: date
+        enrollment: int
+        brief_summary: str
+        allocation: str
+        masking: str
+
+        # trial2vec_emb: float[]
+        # biobert_emb: float[]
+
+Condition:
+    - represented_as: node
+    - preferred_id: id
+    - input_label: condition
+    - is_a: indication
+    - properties:
+        name: str
+
+Intervention:
+    represented_as: node
+    preferred_id: id
+    input_label: intervention
+    is_a: clinical intervention
+    properties:
+        name: str
+
+Outcome:
+    - represented_as: node
+    - preferred_id: id
+    - input_label: outcome
+    - is_a: clinical outcome
+    - properties:
+        type: str
+        title: str
+        description: str
+        time_frame: str
+        population: str
+        units: str
+
+Sponsor:
+    - represented_as: node
+    - preferred_id: id
+    - input_label: sponsor
+    - is_a: organization
+    - properties:
+        name: str
+        agency_class: str
+        lead_or_collaborator: str
+
+ConditionHasStudy:
+    - represented_as: edge
+    - preferred_id: id
+    - input_label: condition_has_study
+    - is_a: association
+    - source: condition
+    - target: study
+
+InterventionHasStudy:
+    - represented_as: edge
+    - preferred_id: id
+    - input_label: intervention_has_study
+    - is_a: association
+    - source: intervention
+    - target: study
+
+StudyHasOutcome:
+    - represented_as: edge
+    - preferred_id: id
+    - input_label: study_has_outcome
+    - is_a: association
+    - source: study
+    - target: outcome
+
+SponsorHasStudy:
+    - represented_as: edge
+    - preferred_id: id
+    - input_label: sponsor_has_study
+    - is_a: association
+    - source: sponsor
+    - target: study
+
+ConditionHasIntervention:
+    - represented_as: edge
+    - preferred_id: id
+    - input_label: condition_has_intervention
+    - is_a: association
+    - source: condition
+    - target: intervention
+
+ConditionHasOutcome:
+    - represented_as: edge
+    - preferred_id: id
+    - input_label: condition_has_outcome
+    - is_a: association
+    - source: condition
+    - target: outcome
+
+InterventionHasOutcome:
+    - represented_as: edge
+    - preferred_id: id
+    - input_label: intervention_has_outcome
+    - is_a: association
+    - source: intervention
+    - target: outcome
+        
