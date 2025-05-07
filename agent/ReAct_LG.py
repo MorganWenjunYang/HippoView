@@ -171,7 +171,7 @@ CURRENT TASK: CLINICAL DATABASE SEARCH
 
 You are currently in the clinical database search phase. Your goal is to retrieve relevant information from the clinical trials database.
 
-You can use the ClinicalTrialsDB tool to search for information. Formulate your search query to find the most relevant clinical trial information.
+You can use the ClinicalTrialsDB tool to search for information. Formulate your search query to find the most relevant clinical trial information with vector similarity.
 """
 
     internet_search_prompt = core_system_prompt + """
@@ -198,12 +198,12 @@ Use the following format:
 
 Question: the input question you must answer
 Thought: you should always think about what to do
-Action: the action to take, should be one or many of {all_tools}
+Action: the action to take, should be one or many of {all_tools}, and specify how you use the tool
 Action Input: the input to the action
 Observation: the result of the action
 ... (this Thought/Action/Action Input/Observation can repeat N times)
 Thought: I now know the final answer
-Final Answer: the final answer to the original input question
+Final Answer: the final answer to the original input question, list citations for each source
 """
 
     # Define graph nodes
@@ -421,9 +421,9 @@ def parse_arguments():
                       choices=["openai", "anthropic", "huggingface", "mistral", "gemini"],
                       help="LLM provider to use")
     parser.add_argument("--embedding", default="huggingface", 
-                      choices=["openai", "huggingface", "cohere", "mistral"],
+                      choices=["openai", "huggingface", "cohere", "mistral", "biobert", "trial2vec", "BGE-M3"],
                       help="Embedding provider to use")
-    parser.add_argument("--model", default=None, 
+    parser.add_argument("--model", default="mistral-large-latest", 
                       help="Specific model name (provider-dependent)")
     parser.add_argument("--temperature", type=float, default=0.2, 
                       help="Model temperature (0-1)")

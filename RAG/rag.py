@@ -10,8 +10,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.embeddings import Embeddings
-
+import json
+# import markdown
+from embedding.embd import get_embedding_model
+from embedding.trial2vec_adapter import mongodb_data_adaptor
 # Add parent directory to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -67,58 +69,6 @@ def get_llm_model(provider: str = "openai", model_name: Optional[str] = None, te
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")
 
-def get_embedding_model(provider: str = "huggingface") -> Embeddings:
-    """Get embedding model based on provider.
-    
-    Args:
-        provider: The embedding provider (openai, huggingface, cohere, mistral, etc.)
-        
-    Returns:
-        A LangChain embeddings model
-    """
-    # Try to use specified provider
-    try:
-        if provider == "openai":
-            from langchain_openai import OpenAIEmbeddings
-            if not os.getenv("OPENAI_API_KEY"):
-                raise ValueError("OPENAI_API_KEY environment variable not set")
-            return OpenAIEmbeddings()
-        
-        elif provider == "huggingface":
-            from langchain_huggingface import HuggingFaceEmbeddings
-            # These models run locally without API access
-            model_name = os.getenv("HF_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-            try:
-                return HuggingFaceEmbeddings(model_name=model_name)
-            except Exception as e:
-                print(f"Error loading {model_name}: {e}")
-                print("Trying alternative local model...")
-                return HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-        
-        elif provider == "cohere":
-            from langchain_cohere import CohereEmbeddings
-            if not os.getenv("COHERE_API_KEY"):
-                raise ValueError("COHERE_API_KEY environment variable not set")
-            return CohereEmbeddings(model="embed-english-v3.0")
-        
-        elif provider == "mistral":
-            return get_embedding_model("huggingface")
-        
-        else:
-            raise ValueError(f"Unsupported embedding provider: {provider}")
-            
-    except (ImportError, ValueError) as e:
-        print(f"Warning: Could not use {provider} embeddings: {str(e)}")
-        print("Falling back to HuggingFace sentence-transformers (local) embeddings")
-        
-        # Fallback to HuggingFace (requires no API key)
-        try:
-            from langchain_huggingface import HuggingFaceEmbeddings
-            return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        except ImportError:
-            print("Error: Could not load HuggingFace embeddings. Please install with:")
-            print("pip install langchain-huggingface sentence-transformers")
-            raise
 
 def fetch_trials_from_mongo():
     """Fetch clinical trial data from MongoDB."""
@@ -220,11 +170,23 @@ def create_vectorstore(documents: List[Document], embedding_provider: str = "mis
     try:
         # Initialize the embedding model
         embeddings = get_embedding_model(provider=embedding_provider)
+
+        if embedding_provider == "trial2vec":
+            documents = mongodb_data_adaptor(documents)
         
         # Create the vector store
-        vectorstore = FAISS.from_documents(documents, embeddings)
+        batch_size = 10
+        vectorstore = None
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i:i+batch_size]
+            if vectorstore is None:
+                vectorstore = FAISS.from_documents(batch, embeddings)
+            else:
+                batch_vectorstore = FAISS.from_documents(batch, embeddings)
+                vectorstore.merge_from(batch_vectorstore)
         
         return vectorstore
+        
     except Exception as e:
         print(f"Error creating vector store: {str(e)}")
         return None
