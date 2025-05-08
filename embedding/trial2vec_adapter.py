@@ -4,32 +4,72 @@ import pandas as pd
 
 # trial2vec test data schema
 
-test_data = load_demo_data()
-print(test_data.keys())
+# test_data = load_demo_data()
+# print(test_data.keys())
 # dict_keys(['x', 'fields', 'ctx_fields', 'tag', 'x_val', 'y_val'])
 
-print('x columns', test_data['x'].columns)
+# print('x columns', test_data['x'].columns)
 # x columns Index(['nct_id', 'description', 'title', 'intervention_name', 'disease',
 #        'keyword', 'outcome_measure', 'criteria', 'reference',
 #        'overall_status'],
 #       dtype='object')
 
-print('x_val columns', test_data['x_val'].columns)
+# print('x_val columns', test_data['x_val'].columns)
 # x_val columns Index(['target_trial', 'rank_1', 'rank_2', 'rank_3', 'rank_4', 'rank_5',
 #        'rank_6', 'rank_7', 'rank_8', 'rank_9', 'rank_10'],
 #       dtype='object')
 
-print('y_val columns', test_data['y_val'].columns)
+# print('y_val columns', test_data['y_val'].columns)
 # y_val columns Index([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype='object')
 
-print('fields', test_data['fields'])
+# print('fields', test_data['fields'])
 # ['title', 'intervention_name', 'disease', 'keyword']
 
-print('ctx_fields', test_data['ctx_fields'])
+# print('ctx_fields', test_data['ctx_fields'])
 # ctx_fields ['description', 'criteria']
 
-print('tag', test_data['tag'])
+# print('tag', test_data['tag'])
 # tag 'nct_id
+
+class Trial2VecEmbeddings(Embeddings):
+    """Wrapper for Trial2Vec embeddings to make it compatible with LangChain."""
+    
+    def __init__(self):
+        self.model = None
+        
+    def _get_model(self):
+        if self.model is None:
+            from trial2vec import Trial2Vec
+            self.model = Trial2Vec(device='cpu')
+            self.model.from_pretrained()
+        return self.model
+    
+    def embed_documents(self, texts):
+        """Embed a list of documents."""
+        model = self._get_model()
+        # Convert texts to trial2vec format
+        embeddings = model.encode(texts)
+        return list(embeddings.values())
+
+    
+    def embed_query(self, text):
+        """Embed a query."""
+        # return self.embed_documents([text])[0]
+        return self.model.sentence_vector(text)[0]
+    
+class Trial2VecRetriever:
+    def __init__(self, vectorstore, embeddings):
+        self.vectorstore = vectorstore
+        self.embeddings = embeddings
+    
+    def get_relevant_documents(self, query: str):
+        # Encode the query using the embedding model
+        query_embedding = self.embeddings.sentence_vector(query)
+        # Use the encoded query to search the vector store
+        return self.vectorstore.similarity_search_by_vector(query_embedding, k=5)
+    
+    def invoke(self, query: str):
+        return self.get_relevant_documents(query)
 
 
 def mongodb_data_adaptor(data: list) -> pd.DataFrame:
@@ -112,9 +152,15 @@ def mongodb_data_adaptor(data: list) -> pd.DataFrame:
                 val = doc.get('outcomes')
                 if isinstance(val, list):
                     # Join outcome titles if present
-                    item[t2v_key] = '; '.join([o.get('title', '') for o in val if 'title' in o])
+                    item[t2v_key] = ', '.join([o.get('title', '') for o in val if 'title' in o])
                 else:
                     item[t2v_key] = None
+            elif mongo_key in ['keyword', 'condition', 'intervention']:
+                val = doc.get(mongo_key)
+                if isinstance(val, list): 
+                    item[t2v_key] = ', '.join([str(o) for o in val if o])
+                else:
+                    item[t2v_key] = str(val)
             elif mongo_key == 'reference':
                 # Not present in mongo, set as None
                 item[t2v_key] = None
@@ -137,8 +183,9 @@ def ctgov_data_adaptor(data):
     return data
 
 def t2v_embed_documents(documents):
-    model = Trial2Vec()
+    model = Trial2Vec(device='cpu')
     model.from_pretrained()
-
-    return model.encode(documents)
+    # if the trial in pre-encoded, just fetch
+    
+    return model.encode(documents).values()
 

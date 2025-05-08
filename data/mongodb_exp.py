@@ -54,6 +54,6 @@ if __name__ == "__main__":
     documents=fetch_documents_by_sponsor_name("AstraZeneca")
     print(documents[1])
 
-    documents=fetch_documents_by_sponsor_name("Roche")
-    print(documents[1])
+    documents=fetch_documents_by_sponsor_name("Pfizer")
+    print(documents[0])
 

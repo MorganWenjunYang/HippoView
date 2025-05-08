@@ -10,8 +10,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
-import json
-# import markdown
 from embedding.embd import get_embedding_model
 from embedding.trial2vec_adapter import mongodb_data_adaptor
 # Add parent directory to sys.path
@@ -91,9 +89,13 @@ def fetch_trials_from_mongo():
     finally:
         client.close()
 
-def transform_trials_to_documents(trials: List[Dict[Any, Any]]) -> List[Document]:
+def transform_trials_to_documents(trials: List[Dict[Any, Any]], embedding_provider: str = "huggingface") -> List[Document]:
     """Transform MongoDB trials into Langchain Document objects."""
     documents = []
+
+    if embedding_provider == "trial2vec":
+        documents = mongodb_data_adaptor(trials)
+        return documents
     
     for trial in trials:
         try:
@@ -170,13 +172,46 @@ def create_vectorstore(documents: List[Document], embedding_provider: str = "mis
     try:
         # Initialize the embedding model
         embeddings = get_embedding_model(provider=embedding_provider)
-
-        if embedding_provider == "trial2vec":
-            documents = mongodb_data_adaptor(documents)
         
         # Create the vector store
-        batch_size = 10
+        batch_size = 100
         vectorstore = None
+        
+        if embedding_provider == "trial2vec":
+            # Convert DataFrame to Document objects using vectorized operations
+            df = documents['x']
+            print("Available columns:", df.columns.tolist())  # Debug print
+            
+            # Create content strings for all rows at once
+            contents = df.apply(lambda row: f"""
+                NCT ID: {row.get('nct_id', 'N/A')}
+                Title: {row.get('title', 'N/A')}
+                Description: {row.get('description', 'N/A')}
+                Intervention: {row.get('intervention_name', 'N/A')}
+                Disease: {row.get('disease', 'N/A')}
+                Keywords: {row.get('keyword', 'N/A')}
+                Outcome Measures: {row.get('outcome_measure', 'N/A')}
+                Criteria: {row.get('criteria', 'N/A')}
+                Status: {row.get('overall_status', 'N/A')}
+                """
+                , axis=1)
+            
+            metadata_list = df.apply(lambda row: {
+                "nct_id": row.get('nct_id', 'N/A'),
+                "title": row.get('title', 'N/A'),
+                "status": row.get('overall_status', 'N/A')
+            }, axis=1)
+            
+            docs = [Document(page_content=content, metadata=metadata) 
+                    for content, metadata in zip(contents, metadata_list)]
+            
+            documents_lc = docs
+            texts = [doc.page_content for doc in documents_lc]
+            doc_embeddings = embeddings.embed_documents(documents)
+            embedding_pairs = zip(texts, doc_embeddings)
+            vectorstore = FAISS.from_embeddings(embedding_pairs, embeddings)
+            return vectorstore
+        
         for i in range(0, len(documents), batch_size):
             batch = documents[i:i+batch_size]
             if vectorstore is None:
@@ -191,9 +226,15 @@ def create_vectorstore(documents: List[Document], embedding_provider: str = "mis
         print(f"Error creating vector store: {str(e)}")
         return None
 
-def setup_retriever(vectorstore):
+def setup_retriever(vectorstore, embedding_provider: str = "mistral"):
     """Set up the retriever from a vector store."""
-    return vectorstore.as_retriever(search_kwargs={"k": 5})
+    if embedding_provider == "trial2vec":        
+        from embedding.trial2vec_adapter import Trial2VecRetriever
+        # Get the embedding model
+        embeddings = get_embedding_model(provider=embedding_provider)
+        return Trial2VecRetriever(vectorstore, embeddings)
+    else:
+        return vectorstore.as_retriever(search_kwargs={"k": 5})
 
 def create_rag_chain(retriever, llm_provider: str = "mistral", model_name: Optional[str] = None, temperature: float = 0.2):
     """Create a RAG chain with the retriever."""
@@ -275,7 +316,7 @@ def main():
             return
         
         # Setup retriever
-        retriever = setup_retriever(vectorstore)
+        retriever = setup_retriever(vectorstore, embedding_provider=args.embedding)
         
         # Create RAG chain
         print(f"Setting up RAG chain with {args.llm} model...")

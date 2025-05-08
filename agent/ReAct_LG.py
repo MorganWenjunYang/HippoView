@@ -132,7 +132,7 @@ def create_agent_graph(llm_provider="mistral", model_name=None, temperature=0.2,
         print("No trials found in MongoDB. Please check your database connection.")
         return None
     
-    documents = transform_trials_to_documents(trials)
+    documents = transform_trials_to_documents(trials, embedding_provider=embedding_provider )
     vectorstore = create_vectorstore(documents, embedding_provider=embedding_provider)
     if not vectorstore:
         print("Failed to create vector store. Please check your embedding configuration.")
@@ -420,7 +420,7 @@ def parse_arguments():
     parser.add_argument("--llm", default="mistral", 
                       choices=["openai", "anthropic", "huggingface", "mistral", "gemini"],
                       help="LLM provider to use")
-    parser.add_argument("--embedding", default="huggingface", 
+    parser.add_argument("--embedding", default="trial2vec", 
                       choices=["openai", "huggingface", "cohere", "mistral", "biobert", "trial2vec", "BGE-M3"],
                       help="Embedding provider to use")
     parser.add_argument("--model", default="mistral-large-latest", 

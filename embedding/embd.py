@@ -3,8 +3,10 @@
 from langchain_community.embeddings import HuggingFaceEmbeddings
 # from langchain_community.document_loaders import MongoDBLoader
 from langchain_core.embeddings import Embeddings
-from trial2vec_adapter import t2v_embed_documents, mongodb_data_adaptor
+from embedding.trial2vec_adapter import Trial2VecEmbeddings
 import os
+import pandas as pd
+
 
 # def embed_documents_hf(embedding_model):
 #     # embed documents with embedding_models in huggingface
@@ -37,8 +39,7 @@ def get_embedding_model(provider: str = "huggingface") -> Embeddings:
         # elif provider == "topo":
         #     pass
         elif provider == "trial2vec":
-            return t2v_embed_documents
-        
+            return Trial2VecEmbeddings()
         elif provider == "openai":
             from langchain_openai import OpenAIEmbeddings
             if not os.getenv("OPENAI_API_KEY"):

@@ -119,7 +119,7 @@ def create_react_agent_with_rag(llm_provider="mistral", model_name=None, tempera
         print("No trials found in MongoDB. Please check your database connection.")
         return None
     
-    documents = transform_trials_to_documents(trials)
+    documents = transform_trials_to_documents(trials, embedding_provider=embedding_provider)
     vectorstore = create_vectorstore(documents, embedding_provider=embedding_provider)
     if not vectorstore:
         print("Failed to create vector store. Please check your embedding configuration.")
