@@ -3,9 +3,10 @@ from trial2vec import Trial2Vec, load_demo_data
 import pandas as pd
 from langchain_core.embeddings import Embeddings
 import numpy as np
-from typing import Union, List
+from typing import Union, List, Dict, Any
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document
+from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun
 
 # trial2vec test data schema
 
@@ -74,21 +75,26 @@ class Trial2VecEmbeddings(Embeddings):
         model = self._get_model()
         return model.sentence_vector(text)[0]
     
-class Trial2VecRetriever(BaseRetriever):
+class Trial2VecRetriever:
     """Custom retriever for Trial2Vec embeddings."""
     
+    vectorstore: Any
+    embeddings: Any
+    
     def __init__(self, vectorstore, embeddings):
+        """Initialize the retriever."""
         self.vectorstore = vectorstore
         self.embeddings = embeddings
     
-    def get_relevant_documents(self, query: Union[str, List[float]]):
+    def get_relevant_documents(
+        self, query: Union[str, List[float]]) -> List[Document]:
         """Get documents relevant to the query."""
         if isinstance(query, str):
             # If query is a string, embed it first
             query_embedding = self.embeddings.embed_query(query)
         else:
             # If query is already an embedding, use it directly
-            query_embedding = query
+            query_embedding = query[0]
             
         # Use the encoded query to search the vector store
         return self.vectorstore.similarity_search_by_vector(query_embedding, k=5)

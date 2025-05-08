@@ -396,8 +396,8 @@ if __name__ == "__main__":
     data = {'x': df}
     model = Trial2VecEmbeddings()
     # compare the embedding of the query and the document
-    emb_doc = model.embed_documents(data)
-    emb_query = model.embed_query(query)
+    emb_partial = model.embed_documents(data)
+    # emb_query = model.embed_query(query)
 
     trials = fetch_trials_from_mongo()
     documents = transform_trials_to_documents(trials, embedding_provider='trial2vec')
@@ -405,12 +405,13 @@ if __name__ == "__main__":
     # Set up retriever
     retriever = setup_retriever(vectorstore, embedding_provider='trial2vec')
     
-    results = retriever.get_relevant_documents(query)
-    print('based on the query embedding',results)
+    results1 = retriever.get_relevant_documents(query)
+    print('based on the direct query embedding',results1)
 
     # based on the document embedding
-    results = retriever.get_relevant_documents(emb_doc)
-    print('based on the document embedding', results)
+    results2 = retriever.get_relevant_documents(emb_partial)
+    print('based on the partial embedding', results2)
+    ## this is far worse than direct query embedding
 
     
 
