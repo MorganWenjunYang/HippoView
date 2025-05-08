@@ -2,6 +2,10 @@
 from trial2vec import Trial2Vec, load_demo_data
 import pandas as pd
 from langchain_core.embeddings import Embeddings
+import numpy as np
+from typing import Union, List
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.documents import Document
 
 # trial2vec test data schema
 
@@ -35,15 +39,26 @@ from langchain_core.embeddings import Embeddings
 class Trial2VecEmbeddings(Embeddings):
     """Wrapper for Trial2Vec embeddings to make it compatible with LangChain."""
     
+    _instance = None
+    _model = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(Trial2VecEmbeddings, cls).__new__(cls)
+        return cls._instance
+    
     def __init__(self):
-        self.model = None
-        
+        if not self._initialized:
+            self._initialized = True
+            self._model = None
+    
     def _get_model(self):
-        if self.model is None:
+        if self._model is None:
             from trial2vec import Trial2Vec
-            self.model = Trial2Vec(device='cpu')
-            self.model.from_pretrained()
-        return self.model
+            self._model = Trial2Vec(device='cpu')
+            self._model.from_pretrained()
+        return self._model
     
     def embed_documents(self, texts):
         """Embed a list of documents."""
@@ -57,24 +72,29 @@ class Trial2VecEmbeddings(Embeddings):
         """Embed a query."""
         # return self.embed_documents([text])[0]
         model = self._get_model()
-        return self.model.sentence_vector(text)[0]
+        return model.sentence_vector(text)[0]
     
-class Trial2VecRetriever:
+class Trial2VecRetriever(BaseRetriever):
+    """Custom retriever for Trial2Vec embeddings."""
+    
     def __init__(self, vectorstore, embeddings):
         self.vectorstore = vectorstore
         self.embeddings = embeddings
     
-    def get_relevant_documents(self, query: str|list[float]):
-        # Encode the query using the embedding model
-        # TODO: partial query trial retrieval => to find NERs in the query and then form the search
+    def get_relevant_documents(self, query: Union[str, List[float]]):
+        """Get documents relevant to the query."""
         if isinstance(query, str):
+            # If query is a string, embed it first
             query_embedding = self.embeddings.embed_query(query)
         else:
+            # If query is already an embedding, use it directly
             query_embedding = query
+            
         # Use the encoded query to search the vector store
         return self.vectorstore.similarity_search_by_vector(query_embedding, k=5)
     
-    def invoke(self, query: str):
+    def invoke(self, query: Union[str, List[float]]):
+        """Invoke the retriever."""
         return self.get_relevant_documents(query)
 
 
