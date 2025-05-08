@@ -1,6 +1,7 @@
 # adapt data to trial2vec format
 from trial2vec import Trial2Vec, load_demo_data
 import pandas as pd
+from langchain_core.embeddings import Embeddings
 
 # trial2vec test data schema
 
@@ -55,6 +56,7 @@ class Trial2VecEmbeddings(Embeddings):
     def embed_query(self, text):
         """Embed a query."""
         # return self.embed_documents([text])[0]
+        model = self._get_model()
         return self.model.sentence_vector(text)[0]
     
 class Trial2VecRetriever:
@@ -62,9 +64,13 @@ class Trial2VecRetriever:
         self.vectorstore = vectorstore
         self.embeddings = embeddings
     
-    def get_relevant_documents(self, query: str):
+    def get_relevant_documents(self, query: str|list[float]):
         # Encode the query using the embedding model
-        query_embedding = self.embeddings.sentence_vector(query)
+        # TODO: partial query trial retrieval => to find NERs in the query and then form the search
+        if isinstance(query, str):
+            query_embedding = self.embeddings.embed_query(query)
+        else:
+            query_embedding = query
         # Use the encoded query to search the vector store
         return self.vectorstore.similarity_search_by_vector(query_embedding, k=5)
     

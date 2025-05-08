@@ -10,10 +10,11 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
-from embedding.embd import get_embedding_model
-from embedding.trial2vec_adapter import mongodb_data_adaptor
+
 # Add parent directory to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from embedding.embd import get_embedding_model
+from embedding.trial2vec_adapter import mongodb_data_adaptor
 
 # Import MongoDB connection from utils
 from data.utils import connect_to_mongo
@@ -266,109 +267,151 @@ def create_rag_chain(retriever, llm_provider: str = "mistral", model_name: Optio
     
     return rag_chain
 
-def parse_arguments():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Clinical Trials RAG System")
-    parser.add_argument("--llm", default="mistral", 
-                      choices=["openai", "anthropic", "huggingface", "mistral", "gemini"],
-                      help="LLM provider to use")
-    parser.add_argument("--embedding", default="huggingface", 
-                      choices=["openai", "huggingface", "cohere", "mistral"],
-                      help="Embedding provider to use")
-    parser.add_argument("--model", default=None, 
-                      help="Specific model name (provider-dependent)")
-    parser.add_argument("--temperature", type=float, default=0.2, 
-                      help="Model temperature (0-1)")
-    parser.add_argument("--hf-embedding-model", default="sentence-transformers/all-MiniLM-L6-v2",
-                      help="HuggingFace embedding model to use")
-    return parser.parse_args()
+# def parse_arguments():
+#     """Parse command line arguments."""
+#     parser = argparse.ArgumentParser(description="Clinical Trials RAG System")
+#     parser.add_argument("--llm", default="mistral", 
+#                       choices=["openai", "anthropic", "huggingface", "mistral", "gemini"],
+#                       help="LLM provider to use")
+#     parser.add_argument("--embedding", default="huggingface", 
+#                       choices=["openai", "huggingface", "cohere", "mistral"],
+#                       help="Embedding provider to use")
+#     parser.add_argument("--model", default=None, 
+#                       help="Specific model name (provider-dependent)")
+#     parser.add_argument("--temperature", type=float, default=0.2, 
+#                       help="Model temperature (0-1)")
+#     parser.add_argument("--hf-embedding-model", default="sentence-transformers/all-MiniLM-L6-v2",
+#                       help="HuggingFace embedding model to use")
+#     return parser.parse_args()
 
-def main():
-    """Main function to set up and test the RAG system."""
-    # Parse command line arguments
-    args = parse_arguments()
+# def main():
+#     """Main function to set up and test the RAG system."""
+#     # Parse command line arguments
+#     args = parse_arguments()
     
-    try:
-        # Fetch trials from MongoDB
-        print("Fetching trials from MongoDB...")
-        trials = fetch_trials_from_mongo()
+#     try:
+#         # Fetch trials from MongoDB
+#         print("Fetching trials from MongoDB...")
+#         trials = fetch_trials_from_mongo()
         
-        if not trials:
-            print("No trials found in MongoDB. Please check your database connection.")
-            return
+#         if not trials:
+#             print("No trials found in MongoDB. Please check your database connection.")
+#             return
         
-        print(f"Found {len(trials)} trials in MongoDB.")
+#         print(f"Found {len(trials)} trials in MongoDB.")
         
-        # Transform trials to documents
-        print("Transforming trials to documents...")
-        documents = transform_trials_to_documents(trials)
+#         # Transform trials to documents
+#         print("Transforming trials to documents...")
+#         documents = transform_trials_to_documents(trials)
         
-        # Create vector store
-        print(f"Creating vector store using {args.embedding} embeddings...")
-        vectorstore = create_vectorstore(documents, embedding_provider=args.embedding)
+#         # Create vector store
+#         print(f"Creating vector store using {args.embedding} embeddings...")
+#         vectorstore = create_vectorstore(documents, embedding_provider=args.embedding)
         
-        if not vectorstore:
-            print(f"Failed to create vector store. Trying with fallback embedding model...")
-            vectorstore = create_vectorstore(documents, embedding_provider="huggingface")
+#         if not vectorstore:
+#             print(f"Failed to create vector store. Trying with fallback embedding model...")
+#             vectorstore = create_vectorstore(documents, embedding_provider="huggingface")
             
-        if not vectorstore:
-            print("Failed to create vector store even with fallback. Exiting.")
-            return
+#         if not vectorstore:
+#             print("Failed to create vector store even with fallback. Exiting.")
+#             return
         
-        # Setup retriever
-        retriever = setup_retriever(vectorstore, embedding_provider=args.embedding)
+#         # Setup retriever
+#         retriever = setup_retriever(vectorstore, embedding_provider=args.embedding)
         
-        # Create RAG chain
-        print(f"Setting up RAG chain with {args.llm} model...")
-        try:
-            rag_chain = create_rag_chain(
-                retriever, 
-                llm_provider=args.llm,
-                model_name=args.model,
-                temperature=args.temperature
-            )
-        except Exception as e:
-            print(f"Failed to create RAG chain with {args.llm}: {str(e)}")
-            print("Trying with fallback to OpenAI model...")
+#         # Create RAG chain
+#         print(f"Setting up RAG chain with {args.llm} model...")
+#         try:
+#             rag_chain = create_rag_chain(
+#                 retriever, 
+#                 llm_provider=args.llm,
+#                 model_name=args.model,
+#                 temperature=args.temperature
+#             )
+#         except Exception as e:
+#             print(f"Failed to create RAG chain with {args.llm}: {str(e)}")
+#             print("Trying with fallback to OpenAI model...")
             
-            if os.getenv("OPENAI_API_KEY"):
-                rag_chain = create_rag_chain(
-                    retriever, 
-                    llm_provider="openai",
-                    model_name=None,
-                    temperature=args.temperature
-                )
-            else:
-                print("Error: Could not use fallback LLM. Please set an API key.")
-                return
+#             if os.getenv("OPENAI_API_KEY"):
+#                 rag_chain = create_rag_chain(
+#                     retriever, 
+#                     llm_provider="openai",
+#                     model_name=None,
+#                     temperature=args.temperature
+#                 )
+#             else:
+#                 print("Error: Could not use fallback LLM. Please set an API key.")
+#                 return
         
-        # Interactive query loop
-        print("\n=== Clinical Trials RAG System ===")
-        print(f"Using LLM: {args.llm}{f' ({args.model})' if args.model else ''}")
-        print(f"Using Embeddings: {args.embedding}")
-        if args.embedding == "huggingface":
-            print(f"HuggingFace Embedding Model: {os.getenv('HF_EMBEDDING_MODEL')}")
-        print("Type 'exit' to quit")
+#         # Interactive query loop
+#         print("\n=== Clinical Trials RAG System ===")
+#         print(f"Using LLM: {args.llm}{f' ({args.model})' if args.model else ''}")
+#         print(f"Using Embeddings: {args.embedding}")
+#         if args.embedding == "huggingface":
+#             print(f"HuggingFace Embedding Model: {os.getenv('HF_EMBEDDING_MODEL')}")
+#         print("Type 'exit' to quit")
         
-        while True:
-            query = input("\nEnter your question about clinical trials: ")
+#         while True:
+#             query = input("\nEnter your question about clinical trials: ")
             
-            if query.lower() == 'exit':
-                break
+#             if query.lower() == 'exit':
+#                 break
                 
-            try:
-                # Get response from RAG chain
-                response = rag_chain.invoke(query)
-                print("\nAnswer:", response)
-            except Exception as e:
-                print(f"Error processing query: {str(e)}")
+#             try:
+#                 # Get response from RAG chain
+#                 response = rag_chain.invoke(query)
+#                 print("\nAnswer:", response)
+#             except Exception as e:
+#                 print(f"Error processing query: {str(e)}")
     
-    except ValueError as e:
-        print(f"Error: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
+#     except ValueError as e:
+#         print(f"Error: {e}")
+#     except Exception as e:
+#         print(f"Unexpected error: {e}")
+#         import traceback
+#         traceback.print_exc()
+
 
 if __name__ == "__main__":
-    main()
+    import pandas as pd
+    from embedding.trial2vec_adapter import Trial2VecEmbeddings, Trial2VecRetriever
+    # partial query trial retrieval
+    query = "find relevant trials in COPD"
+    # => description: COPD, disease: COPD, keyword: COPD
+    # Create a sample DataFrame with COPD-related data
+    sample_data = {
+        'nct_id': [None],
+        'description': ['COPD'],
+        'title': [None], 
+        'intervention_name': [None],
+        'disease': ['COPD'],
+        'keyword': ['COPD'],
+        'outcome_measure': [None],
+        'criteria': [None],
+        'reference': [None],
+        'overall_status': [None]
+    }
+    
+    df = pd.DataFrame(sample_data)
+    data = {'x': df}
+    model = Trial2VecEmbeddings()
+    # compare the embedding of the query and the document
+    emb_doc = model.embed_documents(data)
+    emb_query = model.embed_query(query)
+
+    trials = fetch_trials_from_mongo()
+    documents = transform_trials_to_documents(trials, embedding_provider='trial2vec')
+    vectorstore = create_vectorstore(documents, embedding_provider='trial2vec')
+    # Set up retriever
+    retriever = setup_retriever(vectorstore, embedding_provider='trial2vec')
+    
+    results = retriever.get_relevant_documents(query)
+    print('based on the query embedding',results)
+
+    # based on the document embedding
+    results = retriever.get_relevant_documents(emb_doc)
+    print('based on the document embedding', results)
+
+    
+
+
