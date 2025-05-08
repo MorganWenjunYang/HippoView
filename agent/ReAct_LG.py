@@ -139,7 +139,7 @@ def create_agent_graph(llm_provider="mistral", model_name=None, temperature=0.2,
         return None
     
     # Set up retriever
-    retriever = setup_retriever(vectorstore)
+    retriever = setup_retriever(vectorstore, embedding_provider=embedding_provider)
     
     # Create retriever tool for clinical trials database
     retriever_tool = create_retriever_tool(

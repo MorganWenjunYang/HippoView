@@ -3,10 +3,11 @@ from trial2vec import Trial2Vec, load_demo_data
 import pandas as pd
 from langchain_core.embeddings import Embeddings
 import numpy as np
-from typing import Union, List, Dict, Any
+from typing import Union, List, Dict, Any, Optional
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document
-from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun
+from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun, Callbacks
+from pydantic import Field
 
 # trial2vec test data schema
 
@@ -75,19 +76,19 @@ class Trial2VecEmbeddings(Embeddings):
         model = self._get_model()
         return model.sentence_vector(text)[0]
     
-class Trial2VecRetriever:
+class Trial2VecRetriever(BaseRetriever):
     """Custom retriever for Trial2Vec embeddings."""
     
-    vectorstore: Any
-    embeddings: Any
+    vectorstore: Any = Field(..., description="The vector store to search")
+    embeddings: Any = Field(..., description="The embedding model to use")
     
     def __init__(self, vectorstore, embeddings):
         """Initialize the retriever."""
-        self.vectorstore = vectorstore
-        self.embeddings = embeddings
+        super().__init__(vectorstore=vectorstore, embeddings=embeddings)
     
-    def get_relevant_documents(
-        self, query: Union[str, List[float]]) -> List[Document]:
+    def _get_relevant_documents(
+        self, query: Union[str, List[float]], *, run_manager: CallbackManagerForRetrieverRun
+    ) -> List[Document]:
         """Get documents relevant to the query."""
         if isinstance(query, str):
             # If query is a string, embed it first
@@ -99,9 +100,16 @@ class Trial2VecRetriever:
         # Use the encoded query to search the vector store
         return self.vectorstore.similarity_search_by_vector(query_embedding, k=5)
     
-    def invoke(self, query: Union[str, List[float]]):
-        """Invoke the retriever."""
-        return self.get_relevant_documents(query)
+    # def invoke(
+    #     self, 
+    #     query: Union[str, List[float]], 
+    #     config: Dict[str, Any] = None, 
+    #     **kwargs
+    # ) -> List[Document]:
+    #     """Invoke the retriever with config support."""
+    #     callbacks: Optional[Callbacks] = config.get("callbacks") if config else None
+    #     run_manager = CallbackManagerForRetrieverRun(callbacks=callbacks)
+    #     return self._get_relevant_documents(query, run_manager=run_manager)
 
 
 def mongodb_data_adaptor(data: list) -> pd.DataFrame:
