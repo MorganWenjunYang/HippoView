@@ -1,3 +1,9 @@
+# note:
+# input_label:
+# How the node is referenced in the adapter code
+# Used for mapping between the adapter and the schema
+# Example: input_label: study
+
 clinical trial:
     represented_as: node
     preferred_id: id
@@ -40,7 +46,7 @@ Outcome:
     - input_label: outcome
     - is_a: clinical outcome
     - properties:
-        type: str
+        # type: str
         title: str
         description: str
         time_frame: str
@@ -55,23 +61,23 @@ Sponsor:
     - properties:
         name: str
         agency_class: str
-        lead_or_collaborator: str
+        # lead_or_collaborator: str
 
-ConditionHasStudy:
+StudyHasCondition:
     - represented_as: edge
     - preferred_id: id
-    - input_label: condition_has_study
+    - input_label: study_has_condition
     - is_a: association
-    - source: condition
-    - target: study
+    - source: study
+    - target: condition
 
-InterventionHasStudy:
+StudyHasIntervention:
     - represented_as: edge
     - preferred_id: id
-    - input_label: intervention_has_study
+    - input_label: study_has_intervention
     - is_a: association
-    - source: intervention
-    - target: study
+    - source: study
+    - target: intervention
 
 StudyHasOutcome:
     - represented_as: edge
@@ -80,6 +86,8 @@ StudyHasOutcome:
     - is_a: association
     - source: study
     - target: outcome
+    - properties:
+        type: str
 
 SponsorHasStudy:
     - represented_as: edge
@@ -88,6 +96,8 @@ SponsorHasStudy:
     - is_a: association
     - source: sponsor
     - target: study
+    - properties:
+        lead_or_collaborator: str
 
 ConditionHasIntervention:
     - represented_as: edge

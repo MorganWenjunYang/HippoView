@@ -31,29 +31,6 @@ class ClinicalTrialsAdapterStudyField(Enum):
     Define possible fields the adapter can provide for studies.
     """
 
-    ID = "identificationModule/nctId"
-    BRIEF_TITLE = "identificationModule/briefTitle"
-    OFFICIAL_TITLE = "identificationModule/officialTitle"
-    STATUS = "statusModule/overallStatus"
-    BRIEF_SUMMARY = "descriptionModule/briefSummary"
-    TYPE = "designModule/studyType"
-    ALLOCATION = "designModule/designInfo/allocation"
-    PHASES = "designModule/phases"
-    MODEL = "designModule/designInfo/interventionModel"
-    PRIMARY_PURPOSE = "designModule/designInfo/primaryPurpose"
-    NUMBER_OF_PATIENTS = "designModule/enrollmentInfo/count"
-    ELIGIBILITY_CRITERIA = "eligibilityModule/eligibilityCriteria"
-    HEALTHY_VOLUNTEERS = "eligibilityModule/healthyVolunteers"
-    SEX = "eligibilityModule/sex"
-    MINIMUM_AGE = "eligibilityModule/minimumAge"
-    MAXIMUM_AGE = "eligibilityModule/maximumAge"
-    STANDARDISED_AGES = "eligibilityModule/stdAges"
-
-class ClinicalTrialsAdapterStudyField(Enum):
-    """
-    Define possible fields the adapter can provide for studies.
-    """
-
     NCT_ID = "nct_id"
     STUDY_TYPE = "study_type"
     STATUS = "status"
@@ -64,10 +41,11 @@ class ClinicalTrialsAdapterStudyField(Enum):
     BRIEF_SUMMARY = "brief_summary"
     ALLOCATION = "allocation"
     MASKING = "masking"
+    
 
 class ClinicalTrialsAdapterConditionField(Enum):
     """
-    Define possible fields the adapter can provide for diseases.
+    Define possible fields the adapter can provide for conditions.
     """
 
     NAME = "name"
@@ -133,7 +111,7 @@ class ClinicalTrialsAdapterEdgeType(Enum):
 #     ASSOCIATION_SOURCE = "association_source"
 
 
-class ClinicalTrialsAdapter:
+class ClinicalTrialsMGDBAdapter:
     """
     ClinicalTrials BioCypher adapter. Generates nodes and edges for creating a
     knowledge graph.
@@ -163,7 +141,7 @@ class ClinicalTrialsAdapter:
         self._db = connect_to_mongo()["clinical_trials"]
         self._collection = self._db["trialgpt_trials"]
 
-        self._studies = list(self._collection.distinct("nct_id"))
+        self._study_ids = list(self._collection.distinct("nct_id"))
 
         self._preprocess()
 
@@ -186,7 +164,7 @@ class ClinicalTrialsAdapter:
         self._condition_has_outcome_edges = []
         self._intervention_has_outcome_edges = []
 
-        for study in self._studies:
+        for study in self._study_ids:
             self._preprocess_study(study)
 
         self._create_additional_edges()
@@ -226,24 +204,23 @@ class ClinicalTrialsAdapter:
         # sponsor
         if ClinicalTrialsAdapterNodeType.SPONSOR in self.node_types:
             try:
-                lead = study.get("sponsors").get(
-                    "leadSponsor"
-                )
+                sponsors = study.get("sponsors")
             except AttributeError:
-                lead = None
+                sponsors = []
 
-            if lead:
-                name = lead.get("name")
+            for sponsor in sponsors:
+                name = sponsor.get("name")
+                agency_class = sponsor.get("agency_class")
+                lead_or_collaborator = sponsor.get("lead_or_collaborator")
 
-                if name not in self._sponsors.keys():
-                    self._sponsors.update(
-                        {
-                            name: {
-                                "class": lead.get("class"),
-                            }
-                        }
-                    )
-
+                # add sponsor node to dictionary
+                if name and name not in self._sponsors:
+                    self._sponsors[name] = {
+                        "name": name,
+                        "agency_class": agency_class,
+                        # "lead_or_collaborator": lead_or_collaborator should be in edge
+                    }
+                
                 # sponsor to study edges (correct direction per schema)
                 self._sponsor_has_study_edges.append(
                     (
@@ -251,177 +228,120 @@ class ClinicalTrialsAdapter:
                         name,  # source: sponsor
                         _id,   # target: study
                         "sponsor_has_study",
-                        {},
+                        {"lead_or_collaborator": lead_or_collaborator},
                     )
                 )
 
         # outcomes
         if ClinicalTrialsAdapterNodeType.OUTCOME in self.node_types:
             try:
-                primary = protocol.get("outcomesModule").get("primaryOutcomes")
+                outcomes = study.get("outcomes")
             except AttributeError:
-                primary = None
+                outcomes = []
 
-            try:
-                secondary = protocol.get("outcomesModule").get(
-                    "secondaryOutcomes"
+            for outcome in outcomes:
+                type = outcome.get("outcome_type") #should be in edge
+                title = outcome.get("title")
+                description = outcome.get("description")
+                time_frame = outcome.get("time_frame")
+                population = outcome.get("population")
+                units = outcome.get("units")
+                
+                # add sponsor node to dictionary
+                if title and title not in self._outcomes:
+                    self._outcomes[title] = {
+                        "title": title,
+                        "description": description,
+                        "time_frame": time_frame,
+                        "population": population,
+                        "units": units,
+                    }
+                
+                # sponsor to study edges (correct direction per schema)
+                self._study_has_outcome_edges.append(
+                    (
+                        None,
+                        _id,
+                        title,  
+                        "study_has_outcome",
+                        {'type': type},
+                    )
                 )
-            except AttributeError:
-                secondary = None
-
-            if primary:
-                for outcome in primary:
-                    self._add_outcome(outcome, True, _id)
-
-            if secondary:
-                for outcome in secondary:
-                    self._add_outcome(outcome, False, _id)
 
         # interventions
         if ClinicalTrialsAdapterNodeType.INTERVENTION in self.node_types:
             try:
-                interventions = protocol.get("armsInterventionsModule").get(
-                    "interventions"
-                )
+                interventions = study.get("interventions")
             except AttributeError:
                 interventions = None
 
-            if interventions:
-                for intervention in interventions:
-                    try:
-                        name = intervention.get("name")
-                    except AttributeError:
-                        name = None
+            for intervention in interventions:
+                if intervention not in self._interventions.keys():
+                    self._interventions[intervention] = {
+                        "name": intervention,
+                    }
 
-                    try:
-                        intervention_type = intervention.get("type")
-                    except AttributeError:
-                        intervention_type = None
-
-                    try:
-                        description = intervention.get("description")
-                        description = replace_quote(description)
-                        description = replace_newline(description)
-                    except AttributeError:
-                        description = None
-
-                    try:
-                        mapped_names = intervention.get(
-                            "interventionMappedName"
-                        )
-                    except AttributeError:
-                        mapped_names = None
-
-                    if name:
-                        if name not in self._interventions.keys():
-                            self._interventions.update(
-                                {
-                                    name: {
-                                        "type": intervention_type or "N/A",
-                                        "description": description or "N/A",
-                                        "mapped_names": mapped_names or "N/A",
-                                    },
-                                }
-                            )
-
-                        # intervention to study edges
-                        self._intervention_has_study_edges.append(
-                            (
-                                None,
-                                name,  # source: intervention
-                                _id,   # target: study
-                                "intervention_has_study",
-                                {"description": description or "N/A"},
-                            )
-                        )
-
+                self._study_has_intervention_edges.append(
+                    (
+                        None,
+                        _id,
+                        intervention,
+                        "study_has_intervention",
+                        {},
+                    )
+                )
+                
+                self._intervention_has_outcome_edges.append(
+                    (
+                        None,
+                        intervention,
+                        outcome,
+                        "intervention_has_outcome",
+                        {},
+                    )
+                )
         # conditions
         if ClinicalTrialsAdapterNodeType.CONDITION in self.node_types:
             try:
-                conditions = protocol.get("conditionsModule").get("conditions")
+                conditions = study.get("conditions")
             except AttributeError:
                 conditions = None
 
-            try:
-                keywords = protocol.get("conditionsModule").get("keywords")
-            except AttributeError:
-                keywords = []
-
-            if conditions:
-                for condition in conditions:
-                    if condition not in self._diseases.keys():
-                        self._diseases.update(
-                            {condition: {"keywords": keywords}}
-                        )
-                    else:
-                        if keywords:
-                            if self._diseases[condition]["keywords"]:
-                                self._diseases[condition]["keywords"].extend(
-                                    keywords
-                                )
-                            else:
-                                self._diseases[condition]["keywords"] = keywords
-
-                    # condition to study edges
-                    self._condition_has_study_edges.append(
-                        (
-                            None,
-                            condition,  # source: condition 
-                            _id,        # target: study
-                            "condition_has_study",
-                            {},
-                        )
-                    )
-
-    def _add_outcome(self, outcome: dict, primary: bool, study_id: str = None):
-        """
-        Add an outcome to the outcomes dictionary and create corresponding edges if study_id is provided.
-        
-        Args:
-            outcome: The outcome dictionary from the API
-            primary: Whether this is a primary outcome
-            study_id: The study ID to create edges for
-        """
-        try:
-            measure = outcome.get("measure")
-            measure = replace_quote(measure)
-        except AttributeError:
-            measure = None
-
-        try:
-            time_frame = outcome.get("timeFrame")
-        except AttributeError:
-            time_frame = None
-
-        try:
-            description = outcome.get("description")
-            description = replace_quote(description)
-        except AttributeError:
-            description = None
-
-        if measure:
-            if measure not in self._outcomes:
-                self._outcomes.update(
-                    {
-                        measure: {
-                            "primary": primary,
-                            "time_frame": time_frame or "N/A",
-                            "description": description or "N/A",
-                        },
+            for condition in conditions:
+                if condition not in self._conditions.keys():
+                    self._conditions[condition] = {
+                        "name": condition,
                     }
-                )
-            
-            # Create study_has_outcome edge if study_id is provided
-            if study_id:
-                self._study_has_outcome_edges.append(
+
+                self._study_has_condition_edges.append(
                     (
                         None,
-                        study_id,  # source: study
-                        measure,   # target: outcome
-                        "study_has_outcome",
-                        {"primary": primary},
+                        _id,
+                        condition,
+                        "study_has_condition",
+                        {},
                     )
                 )
+
+                self._condition_has_intervention_edges.append(
+                    (
+                        None,
+                        condition,
+                        intervention,
+                        "condition_has_intervention",
+                        {},
+                    )
+                )
+                self._condition_has_outcome_edges.append(
+                    (
+                        None,
+                        condition,
+                        outcome,
+                        "condition_has_outcome",
+                        {},
+                    )
+                )
+
 
     def get_nodes(self):
         """
@@ -433,28 +353,28 @@ class ClinicalTrialsAdapter:
 
         if ClinicalTrialsAdapterNodeType.STUDY in self.node_types:
             for study in self._studies:
-                if not study.get("nctId"):
+                if not study.get("nct_id"):
                     continue
 
                 _props = self._get_study_props_from_fields(study)
 
-                yield (study.get("nctId"), "clinical trial", _props)
+                yield (study.get("nct_id"), "study", _props)
 
         if ClinicalTrialsAdapterNodeType.SPONSOR in self.node_types:
             for name, props in self._sponsors.items():
-                yield (name, "Sponsor", props)
+                yield (name, "sponsor", props)
 
         if ClinicalTrialsAdapterNodeType.OUTCOME in self.node_types:
             for measure, props in self._outcomes.items():
-                yield (measure, "Outcome", props)
+                yield (measure, "outcome", props)
 
         if ClinicalTrialsAdapterNodeType.INTERVENTION in self.node_types:
             for name, props in self._interventions.items():
-                yield (name, "Intervention", props)
+                yield (name, "intervention", props)
 
         if ClinicalTrialsAdapterNodeType.CONDITION in self.node_types:
-            for name, props in self._diseases.items():
-                yield (name, "Condition", props)
+            for name, props in self._conditions.items():
+                yield (name, "condition", props)
 
     def _get_study_props_from_fields(self, study):
         """
@@ -462,7 +382,7 @@ class ClinicalTrialsAdapter:
         fields.
 
         Args:
-            study: The study (raw API result) to extract properties from.
+            study: The study from MongoDB to extract properties from.
 
         Returns:
             A dictionary of properties.
@@ -474,21 +394,17 @@ class ClinicalTrialsAdapter:
             if field not in ClinicalTrialsAdapterStudyField:
                 continue
 
-            if field == ClinicalTrialsAdapterStudyField.ID:
-                continue
-
-            path = field.value.split("/")
-            value = study.get("protocolSection")
-
-            if value:
-                for step in path:
-                    if value:
-                        value = value.get(step)
+            # Direct access to MongoDB fields
+            value = study.get(field.value)
 
             if isinstance(value, list):
-                value = [replace_quote(v) for v in value]
+                value = [replace_quote(str(v)) for v in value]
             elif isinstance(value, str):
                 value = replace_quote(value)
+            
+            # Convert to string if needed
+            if value is not None and not isinstance(value, str) and not isinstance(value, list):
+                value = str(value)
 
             props.update({field.name.lower(): value or "N/A"})
 
@@ -628,6 +544,6 @@ def replace_newline(string):
 
 if __name__ == "__main__":
     from data.utils import connect_to_mongo
-    adapter = ClinicalTrialsAdapter()
+    adapter = ClinicalTrialsMGDBAdapter()
     print(adapter._studies)
     print(len(adapter._studies), "studies in mongodb")
