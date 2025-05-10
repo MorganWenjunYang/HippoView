@@ -7,6 +7,7 @@ from itertools import chain
 from typing import Optional
 from biocypher._logger import logger
 import os, sys
+import numpy as np
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.utils import connect_to_mongo
 
@@ -84,8 +85,8 @@ class ClinicalTrialsAdapterEdgeType(Enum):
     Enum for the edge types defined in the schema.
     """
 
-    CONDITION_HAS_STUDY = auto()
-    INTERVENTION_HAS_STUDY = auto()
+    STUDY_HAS_CONDITION = auto()
+    STUDY_HAS_INTERVENTION = auto()
     STUDY_HAS_OUTCOME = auto()
     SPONSOR_HAS_STUDY = auto()
     CONDITION_HAS_INTERVENTION = auto()
@@ -110,6 +111,19 @@ class ClinicalTrialsAdapterEdgeType(Enum):
 #     ASSOCIATION_TYPE = "association_type"
 #     ASSOCIATION_SOURCE = "association_source"
 
+class ClinicalTrialsAdapterSponsorHasStudyEdgeField(Enum):
+    """
+    Define possible fields the adapter can provide for sponsor-study edges.
+    """
+
+    LEAD_OR_COLLABORATOR = "lead_or_collaborator"
+
+class ClinicalTrialAdapterStudyHasOutcomeEdgeField(Enum):
+    """
+    Define possible fields the adapter can provide for study-outcome edges.
+    """
+
+    TYPE = "type"
 
 class ClinicalTrialsMGDBAdapter:
     """
@@ -156,16 +170,16 @@ class ClinicalTrialsMGDBAdapter:
         self._conditions = {}
 
         # Updated edge collections based on schema
-        self._condition_has_study_edges = []
-        self._intervention_has_study_edges = []
+        self._study_has_condition_edges = []
+        self._study_has_intervention_edges = []
         self._study_has_outcome_edges = []
         self._sponsor_has_study_edges = []
         self._condition_has_intervention_edges = []
         self._condition_has_outcome_edges = []
         self._intervention_has_outcome_edges = []
 
-        for study in self._study_ids:
-            self._preprocess_study(study)
+        for study_id in self._study_ids:
+            self._preprocess_study(study_id)
 
         self._create_additional_edges()
 
@@ -192,19 +206,34 @@ class ClinicalTrialsMGDBAdapter:
         if not _id:
             return
 
-        study["nct_id"] = _id
-        study["study_type"] = study_type
-        study["status"] = status
-        study["phase"] = phase
-        study["start_date"] = start_date
-        study["completion_date"] = completion_date
-        study["enrollment"] = enrollment
-        study["brief_summary"] = brief_summary  
+        # study["nct_id"] = _id
+        # study["study_type"] = study_type
+        # study["status"] = status
+        # study["phase"] = phase
+        # study["start_date"] = start_date
+        # study["completion_date"] = completion_date
+        # study["enrollment"] = enrollment
+        # study["brief_summary"] = brief_summary  
+
+        # study
+        if ClinicalTrialsAdapterNodeType.STUDY in self.node_types:
+            self._studies[_id] = {
+                "nct_id": _id,
+                "study_type": study_type,
+                "status": status,
+                "phase": phase,
+                "start_date": start_date,
+                "completion_date": completion_date,
+                "enrollment": enrollment,
+                "brief_summary": brief_summary,
+            }
 
         # sponsor
         if ClinicalTrialsAdapterNodeType.SPONSOR in self.node_types:
             try:
                 sponsors = study.get("sponsors")
+                if isinstance(sponsors, float) and np.isnan(sponsors):
+                    sponsors = []
             except AttributeError:
                 sponsors = []
 
@@ -236,6 +265,8 @@ class ClinicalTrialsMGDBAdapter:
         if ClinicalTrialsAdapterNodeType.OUTCOME in self.node_types:
             try:
                 outcomes = study.get("outcomes")
+                if isinstance(outcomes, float) and np.isnan(outcomes):
+                    outcomes = []
             except AttributeError:
                 outcomes = []
 
@@ -271,9 +302,13 @@ class ClinicalTrialsMGDBAdapter:
         # interventions
         if ClinicalTrialsAdapterNodeType.INTERVENTION in self.node_types:
             try:
-                interventions = study.get("interventions")
+                interventions = study.get("intervention")
+                print(interventions)
+                print(study)
+                if isinstance(interventions, float) and np.isnan(interventions):
+                    interventions = []
             except AttributeError:
-                interventions = None
+                interventions = []
 
             for intervention in interventions:
                 if intervention not in self._interventions.keys():
@@ -291,21 +326,23 @@ class ClinicalTrialsMGDBAdapter:
                     )
                 )
                 
-                self._intervention_has_outcome_edges.append(
-                    (
-                        None,
-                        intervention,
-                        outcome,
-                        "intervention_has_outcome",
-                        {},
-                    )
-                )
+                # self._intervention_has_outcome_edges.append(
+                #     (
+                #         None,
+                #         intervention,
+                #         outcome,
+                #         "intervention_has_outcome",
+                #         {},
+                #     )
+                # )
         # conditions
         if ClinicalTrialsAdapterNodeType.CONDITION in self.node_types:
             try:
-                conditions = study.get("conditions")
+                conditions = study.get("condition")
+                if isinstance(conditions, float) and np.isnan(conditions):
+                    conditions = []
             except AttributeError:
-                conditions = None
+                conditions = []
 
             for condition in conditions:
                 if condition not in self._conditions.keys():
@@ -323,24 +360,24 @@ class ClinicalTrialsMGDBAdapter:
                     )
                 )
 
-                self._condition_has_intervention_edges.append(
-                    (
-                        None,
-                        condition,
-                        intervention,
-                        "condition_has_intervention",
-                        {},
-                    )
-                )
-                self._condition_has_outcome_edges.append(
-                    (
-                        None,
-                        condition,
-                        outcome,
-                        "condition_has_outcome",
-                        {},
-                    )
-                )
+                # self._condition_has_intervention_edges.append(
+                #     (
+                #         None,
+                #         condition,
+                #         intervention,
+                #         "condition_has_intervention",
+                #         {},
+                #     )
+                # )
+                # self._condition_has_outcome_edges.append(
+                #     (
+                #         None,
+                #         condition,
+                #         outcome,
+                #         "condition_has_outcome",
+                #         {},
+                #     )
+                # )
 
 
     def get_nodes(self):
@@ -352,21 +389,17 @@ class ClinicalTrialsMGDBAdapter:
         logger.info("Generating nodes.")
 
         if ClinicalTrialsAdapterNodeType.STUDY in self.node_types:
-            for study in self._studies:
-                if not study.get("nct_id"):
-                    continue
-
-                _props = self._get_study_props_from_fields(study)
-
-                yield (study.get("nct_id"), "study", _props)
+            for study_id, study_data in self._studies.items():
+                _props = study_data
+                yield (study_id, "study", _props)
 
         if ClinicalTrialsAdapterNodeType.SPONSOR in self.node_types:
             for name, props in self._sponsors.items():
                 yield (name, "sponsor", props)
 
         if ClinicalTrialsAdapterNodeType.OUTCOME in self.node_types:
-            for measure, props in self._outcomes.items():
-                yield (measure, "outcome", props)
+            for title, props in self._outcomes.items():
+                yield (title, "outcome", props)
 
         if ClinicalTrialsAdapterNodeType.INTERVENTION in self.node_types:
             for name, props in self._interventions.items():
@@ -376,40 +409,6 @@ class ClinicalTrialsMGDBAdapter:
             for name, props in self._conditions.items():
                 yield (name, "condition", props)
 
-    def _get_study_props_from_fields(self, study):
-        """
-        Returns a dictionary of properties for a study node, given the selected
-        fields.
-
-        Args:
-            study: The study from MongoDB to extract properties from.
-
-        Returns:
-            A dictionary of properties.
-        """
-
-        props = {}
-
-        for field in self.node_fields:
-            if field not in ClinicalTrialsAdapterStudyField:
-                continue
-
-            # Direct access to MongoDB fields
-            value = study.get(field.value)
-
-            if isinstance(value, list):
-                value = [replace_quote(str(v)) for v in value]
-            elif isinstance(value, str):
-                value = replace_quote(value)
-            
-            # Convert to string if needed
-            if value is not None and not isinstance(value, str) and not isinstance(value, list):
-                value = str(value)
-
-            props.update({field.name.lower(): value or "N/A"})
-
-        return props
-
     def get_edges(self):
         """
         Returns a generator of edge tuples for edge types specified in the
@@ -418,11 +417,11 @@ class ClinicalTrialsMGDBAdapter:
 
         logger.info("Generating edges.")
 
-        if ClinicalTrialsAdapterEdgeType.CONDITION_HAS_STUDY in self.edge_types:
-            yield from self._condition_has_study_edges
+        if ClinicalTrialsAdapterEdgeType.STUDY_HAS_CONDITION in self.edge_types:
+            yield from self._study_has_condition_edges
 
-        if ClinicalTrialsAdapterEdgeType.INTERVENTION_HAS_STUDY in self.edge_types:
-            yield from self._intervention_has_study_edges
+        if ClinicalTrialsAdapterEdgeType.STUDY_HAS_INTERVENTION in self.edge_types:
+            yield from self._study_has_intervention_edges
 
         if ClinicalTrialsAdapterEdgeType.STUDY_HAS_OUTCOME in self.edge_types:
             yield from self._study_has_outcome_edges
@@ -469,21 +468,24 @@ class ClinicalTrialsMGDBAdapter:
         if edge_fields:
             self.edge_fields = edge_fields
         else:
-            self.edge_fields = [field for field in chain()]
+            self.edge_fields = [field for field in chain(
+                ClinicalTrialsAdapterSponsorHasStudyEdgeField,
+                ClinicalTrialAdapterStudyHasOutcomeEdgeField,
+            )]
 
     def _create_additional_edges(self):
         """
         Create additional edges between entities based on existing relationships
         """
         # For each study, create connections between its conditions and interventions
-        for edge in self._condition_has_study_edges:
-            condition = edge[2]  # condition name (source)
-            study_id = edge[3]   # study id (target)
+        for edge in self._study_has_condition_edges:
+            condition = edge[3]  # condition name (target)
+            study_id = edge[2]   # study id (source)
             
             # Find all interventions for this study
-            for int_edge in self._intervention_has_study_edges:
-                if int_edge[3] == study_id:  # if same study
-                    intervention = int_edge[2]  # intervention name (source)
+            for int_edge in self._study_has_intervention_edges:
+                if int_edge[2] == study_id:  # if same study
+                    intervention = int_edge[3]  # intervention name (target)
                     
                     # Create condition_has_intervention edge
                     self._condition_has_intervention_edges.append(
@@ -513,9 +515,9 @@ class ClinicalTrialsMGDBAdapter:
                     )
         
         # For each study, create connections between its interventions and outcomes
-        for edge in self._intervention_has_study_edges:
-            intervention = edge[2]  # intervention name (source)
-            study_id = edge[3]      # study id (target)
+        for edge in self._study_has_intervention_edges:
+            intervention = edge[3]  # intervention name (target)
+            study_id = edge[2]      # study id (source)
             
             # Find all outcomes for this study
             for out_edge in self._study_has_outcome_edges:
