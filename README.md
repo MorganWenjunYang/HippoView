@@ -1,6 +1,9 @@
 ## HippoView
 
 An AI-powered clinical trial explorer
+![System Architecture](diagram/v1.png)
+
+
 
 1. Knowledge graph
     - From AACT(a relational database for clinical trial) and through ETL to build knowledge graph with graph database(neo4j)
