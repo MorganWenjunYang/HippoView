@@ -1,7 +1,7 @@
 ## HippoView
 
 An AI-powered clinical trial explorer
-![System Architecture](diagram/v1.png)
+![System Architecture](diagram/v2.png)
 
 
 
