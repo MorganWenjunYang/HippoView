@@ -90,7 +90,7 @@ def fetch_document_by_nct_id(nct_id):
     db = client["clinical_trials"]
     collection = db["trialgpt_trials"]
     cursor = collection.find_one({"nct_id": nct_id})
-    json_doc = dumps(cursor)
+    json_doc = dumps(cursor, indent=2)
     return json_doc
 
 def fetch_documents_by_sponsor_name(sponsor_name):
@@ -98,7 +98,7 @@ def fetch_documents_by_sponsor_name(sponsor_name):
     db = client["clinical_trials"]
     collection = db["trialgpt_trials"]
     cursor = collection.find({"sponsors.name": sponsor_name})
-    json_docs = [dumps(doc) for doc in cursor]
+    json_docs = [dumps(doc, indent=2) for doc in cursor]
     return json_docs
 
 # NEO4J DB

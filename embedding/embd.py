@@ -1,12 +1,12 @@
 # add embedding for documents in mongo db
 
-from langchain_community.embeddings import HuggingFaceEmbeddings
+# from langchain_community.embeddings import HuggingFaceEmbeddings
 # from langchain_community.document_loaders import MongoDBLoader
 from langchain_core.embeddings import Embeddings
 from embedding.trial2vec_adapter import Trial2VecEmbeddings
 import os
 import pandas as pd
-
+import pickle   
 
 # def embed_documents_hf(embedding_model):
 #     # embed documents with embedding_models in huggingface
@@ -83,6 +83,14 @@ def get_embedding_model(provider: str = "huggingface") -> Embeddings:
             print("Error: Could not load HuggingFace embeddings. Please install with:")
             print("pip install langchain-huggingface sentence-transformers")
             raise
+
+def save_embedding(embedding, filename):
+    with open(filename, 'wb') as f:
+        pickle.dump(embedding, f)
+
+def load_embedding(filename):
+    with open(filename, 'rb') as f:
+        return pickle.load(f)
 
 if __name__ == "__main__":
     pass
