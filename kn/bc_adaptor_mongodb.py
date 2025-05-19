@@ -13,8 +13,6 @@ from data.utils import connect_to_mongo
 
 logger.debug(f"Loading module {__name__}.")
 
-import requests
-
 class ClinicalTrialsAdapterNodeType(Enum):
     """
     Define types of nodes the adapter can provide.
