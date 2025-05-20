@@ -1,4 +1,6 @@
 # adapt from https://github.com/biocypher/igan/blob/main/igan/adapters/clinicaltrials_adapter.py
+# biolink-model: https://raw.githubusercontent.com/biolink/biolink-model/v3.2.1/biolink-model.owl.ttl
+# clinicaltrials.gov API: https://clinicaltrials.gov/api/oas/v2
 
 import random
 import string
