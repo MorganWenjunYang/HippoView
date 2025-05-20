@@ -1,7 +1,8 @@
 biocypher:
   offline: true
   debug: true
-  schema_config_path: ./kn/kn_schema.yaml
+  schema_config_path: ./kn_schema.yaml
+  strict: false
 
 neo4j:
   database_name: clinical_trials

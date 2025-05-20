@@ -8,7 +8,8 @@ clinical trial:
     represented_as: node
     preferred_id: id
     input_label: study
-    is_a: clincal trial
+    is_a: named thing
+    biolink_class: biolink:ClinicalTrial
     properties:
         nct_id: str
         study_type: str
@@ -24,28 +25,32 @@ clinical trial:
         # trial2vec_emb: float[]
         # biobert_emb: float[]
 
-Condition:
-    - represented_as: node
-    - preferred_id: id
-    - input_label: condition
-    - is_a: indication
-    - properties:
-        name: str
-
-Intervention:
+condition:
     represented_as: node
     preferred_id: id
-    input_label: intervention
-    is_a: clinical intervention
+    input_label: disease
+    is_a: named thing
+    synonym_for: disease
+    biolink_class: biolink:Disease
     properties:
         name: str
 
-Outcome:
-    - represented_as: node
-    - preferred_id: id
-    - input_label: outcome
-    - is_a: clinical outcome
-    - properties:
+intervention:
+    represented_as: node
+    # preferred_id: id
+    input_label: intervention
+    is_a: clinical intervention
+    biolink_class: biolink:ClinicalIntervention
+    properties:
+        name: str
+
+outcome:
+    represented_as: node
+    # preferred_id: id
+    input_label: outcome
+    is_a: clinical entity
+    biolink_class: biolink:ClinicalFinding
+    properties:
         # type: str
         title: str
         description: str
@@ -53,15 +58,17 @@ Outcome:
         population: str
         units: str
 
-Sponsor:
-    - represented_as: node
-    - preferred_id: id
-    - input_label: sponsor
-    - is_a: organization
-    - properties:
+sponsor:
+    represented_as: node
+    # preferred_id: id
+    biolink_class: biolink:Organization
+    input_label: sponsor
+    is_a: agent
+    properties:
         name: str
         agency_class: str
         # lead_or_collaborator: str
+    # - biolink_class: agent
 
 StudyHasCondition:
     - represented_as: edge
