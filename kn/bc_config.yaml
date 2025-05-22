@@ -5,7 +5,7 @@ biocypher:
   strict: false
 
 neo4j:
-  database_name: clinical_trials
+  database_name: clinical-trials
   delimiter: '\t'
   array_delimiter: "|"
   quote_character: '"'
