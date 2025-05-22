@@ -1,0 +1,4 @@
+biocypher==0.9.5
+data==0.4
+numpy==2.2.5
+Requests==2.32.3

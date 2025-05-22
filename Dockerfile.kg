@@ -1,0 +1,37 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE} AS setup-stage
+
+WORKDIR /usr/app/
+COPY ./kn/bc_config.yaml ./kn/kn_schema.yaml ./kn/create_kn.py ./kn/bc_adaptor_ctgovAPI.py ./kn/bc_adaptor_mongodb.py ./kn/
+COPY ./data/utils.py /usr/app/data/utils.py
+COPY ./kn/requirements-kn.txt ./data/requirements-dt.txt ./
+COPY ./kn/startup.sh /usr/app/startup.sh
+# Conditionally copy the patch file if it exists
+RUN if [ -f ./kn/biocypher_entrypoint_patch.sh ]; then cp ./kn/biocypher_entrypoint_patch.sh /usr/app/biocypher_entrypoint_patch.sh; fi
+
+# Set PYTHONPATH
+ENV PYTHONPATH="/usr/app"
+RUN touch ./data/__init__.py
+
+RUN pip install --timeout 100 --retries 3 --trusted-host pypi.org --trusted-host files.pythonhosted.org -i https://mirrors.aliyun.com/pypi/simple/ -r requirements-kn.txt -r requirements-dt.txt
+
+# Build the knowledge graph during image creation
+# THIS IS CRITICAL: We build the graph in the setup stage, not at runtime
+RUN python3 kn/create_kn.py
+
+# Make the startup script executable
+RUN chmod +x /usr/app/startup.sh
+
+FROM public.ecr.aws/docker/library/neo4j:4.4-enterprise AS deploy-stage
+# Copy all necessary files from the setup stage
+COPY --from=setup-stage /usr/app/ /usr/app/
+# Make sure the biocypher output directory is copied
+COPY --from=setup-stage /usr/app/biocypher-out/ /usr/app/biocypher-out/
+COPY --from=setup-stage /usr/app/startup.sh /usr/app/startup.sh
+# # Conditionally copy the patch file
+# RUN mkdir -p /usr/app/
+# # Use a shell command to copy the file instead of COPY instruction
+# RUN test -f /usr/app/biocypher_entrypoint_patch.sh && cp /usr/app/biocypher_entrypoint_patch.sh /usr/app/ || echo "Patch file not found, continuing without it"
+
+# Set the entrypoint to the startup script
+ENTRYPOINT ["/usr/app/startup.sh"]
