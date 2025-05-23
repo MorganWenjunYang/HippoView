@@ -466,7 +466,9 @@ class ClinicalTrialsAdapter:
                 lead_sponsor = protocol.get("sponsorCollaboratorsModule", {}).get("leadSponsor")
                 if lead_sponsor and lead_sponsor.get("name"):
                     sponsor_name = self._ensure_string(lead_sponsor.get("name"))
-                    yield (None, sponsor_name, _id, "sponsor_has_study", {"lead_or_collaborator": "lead"})
+                    # if sponsor_name == "N/A" or sponsor_name=='' or _id == '':
+                        # logger.info(f"Sponsor name: {sponsor_name}, Study ID: {_id}")
+                    yield (None, sponsor_name, _id, "SPONSOR_HAS_STUDY", {"lead_or_collaborator": "lead"})
 
             # Study to condition edges
             conditions = protocol.get("conditionsModule", {}).get("conditions", [])
@@ -479,7 +481,7 @@ class ClinicalTrialsAdapter:
                     
                     # Study has condition
                     if ClinicalTrialsAdapterEdgeType.STUDY_HAS_CONDITION in self.edge_types:
-                        yield (None, _id, condition_name, "study_has_condition", {})
+                        yield (None, _id, condition_name, "STUDY_HAS_CONDITION", {})
                     
                     # Condition has intervention
                     if ClinicalTrialsAdapterEdgeType.CONDITION_HAS_INTERVENTION in self.edge_types:
@@ -551,7 +553,6 @@ class ClinicalTrialsAdapter:
     def get_edges(self):
         from biocypher._create import BioCypherEdge
         
-        # Process in parallel but wrap results in BioCypher expected format
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = [executor.submit(self._fetch_studies_chunk, token) for token in self._chunk_tokens]
             
@@ -559,8 +560,15 @@ class ClinicalTrialsAdapter:
                 studies = future.result()
                 for study in studies:
                     for edge_tuple in self._process_study_edges(study):
-                        # Convert to BioCypher's expected format
-                        edge = BioCypherEdge(*edge_tuple)
+                        # Explicitly map tuple elements to BioCypherEdge parameters:
+                        edge_id, source_id, target_id, edge_type, props = edge_tuple
+                        edge = BioCypherEdge(
+                            source_id=source_id,  # This must not be None
+                            target_id=target_id,  # This must not be None
+                            relationship_label=edge_type,
+                            relationship_id=edge_id,  # This can be None
+                            properties=props
+                        )
                         yield edge
 
     def _set_types_and_fields(
