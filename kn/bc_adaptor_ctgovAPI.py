@@ -289,6 +289,48 @@ class ClinicalTrialsAdapter:
             logger.error(f"Error fetching studies chunk with token {page_token}: {str(e)}")
             return []
 
+    def _ensure_string(self, value, default="N/A"):
+        """Convert any value to a properly formatted string"""
+        if value is None:
+            return default
+        if isinstance(value, str):
+            return replace_quote(value)
+        return replace_quote(str(value))
+        
+    def _ensure_int(self, value, default=0):
+        """Convert any value to an integer"""
+        if value is None or value == "N/A":
+            return default
+        try:
+            if isinstance(value, str) and not value.strip().isdigit():
+                return default
+            return int(value)
+        except (ValueError, TypeError):
+            return default
+            
+    def _ensure_date(self, value, default=None):
+        """Convert any value to a date string"""
+        if value is None or value == "N/A":
+            return default
+        # Handle date structure objects
+        if isinstance(value, dict) and value.get("date"):
+            value = value.get("date")
+        # Clean string dates
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return default
+        return value
+        
+    def _format_list(self, value_list, default="N/A"):
+        """Format a list of values as a comma-separated string"""
+        if not value_list:
+            return default
+        cleaned = [self._ensure_string(v) for v in value_list if v]
+        if not cleaned:
+            return default
+        return ", ".join(cleaned)
+        
     def _process_study_nodes(self, study):
         """
         Process a single study and yield all related nodes.
@@ -318,10 +360,12 @@ class ClinicalTrialsAdapter:
             if ClinicalTrialsAdapterNodeType.SPONSOR in self.node_types:
                 lead_sponsor = protocol.get("sponsorCollaboratorsModule", {}).get("leadSponsor")
                 if lead_sponsor and lead_sponsor.get("name"):
+                    sponsor_name = self._ensure_string(lead_sponsor.get("name"))
+                    agency_class = self._ensure_string(lead_sponsor.get("class"))
                     yield (
-                        lead_sponsor["name"],
+                        sponsor_name,
                         "sponsor",
-                        {"agency_class": lead_sponsor.get("class", "N/A")}
+                        {"agency_class": agency_class}
                     )
 
             # Condition nodes
@@ -329,23 +373,30 @@ class ClinicalTrialsAdapter:
                 conditions = protocol.get("conditionsModule", {}).get("conditions", [])
                 for condition in conditions:
                     if condition:
-                        yield (
-                            condition,
-                            "disease",
-                            {"name": condition}
-                        )
+                        condition_name = self._ensure_string(condition)
+                        if condition_name:
+                            yield (
+                                condition_name,
+                                "disease",
+                                {"name": condition_name}
+                            )
 
             # Intervention nodes
             if ClinicalTrialsAdapterNodeType.INTERVENTION in self.node_types:
                 interventions = protocol.get("armsInterventionsModule", {}).get("interventions", [])
                 for intervention in interventions:
                     if intervention and intervention.get("name"):
+                        intervention_name = self._ensure_string(intervention.get("name"))
+                        intervention_type = self._ensure_string(intervention.get("type"))
+                        intervention_desc = self._ensure_string(intervention.get("description"))
+                        
                         yield (
-                            intervention["name"],
+                            intervention_name,
                             "intervention",
                             {
-                                "type": intervention.get("type", "N/A"),
-                                "description": replace_quote(intervention.get("description", "N/A"))
+                                "name": intervention_name,
+                                "type": intervention_type,
+                                "description": intervention_desc
                             }
                         )
 
@@ -353,37 +404,42 @@ class ClinicalTrialsAdapter:
             if ClinicalTrialsAdapterNodeType.OUTCOME in self.node_types:
                 outcomes_module = protocol.get("outcomesModule", {})
                 
-                # Primary outcomes
-                for outcome in outcomes_module.get("primaryOutcomes", []):
+                # Process outcomes with proper type handling
+                def process_outcome(outcome, outcome_type="primary"):
                     if outcome and outcome.get("measure"):
-                        yield (
-                            outcome["measure"],
+                        measure = self._ensure_string(outcome.get("measure"))
+                        description = self._ensure_string(outcome.get("description"))
+                        time_frame = self._ensure_string(outcome.get("timeFrame"))
+                        
+                        return (
+                            measure,
                             "outcome",
                             {
-                                "title": outcome["measure"],
-                                "description": replace_quote(outcome.get("description", "N/A")),
-                                "time_frame": outcome.get("timeFrame", "N/A"),
+                                "title": measure,
+                                "description": description,
+                                "time_frame": time_frame,
                                 "population": "N/A",
                                 "units": "N/A"
                             }
                         )
+                    return None
+                
+                # Primary outcomes
+                for outcome in outcomes_module.get("primaryOutcomes", []):
+                    outcome_node = process_outcome(outcome, "primary")
+                    if outcome_node:
+                        yield outcome_node
                 
                 # Secondary outcomes
                 for outcome in outcomes_module.get("secondaryOutcomes", []):
-                    if outcome and outcome.get("measure"):
-                        yield (
-                            outcome["measure"],
-                            "outcome",
-                            {
-                                "title": outcome["measure"],
-                                "description": replace_quote(outcome.get("description", "N/A")),
-                                "time_frame": outcome.get("timeFrame", "N/A"),
-                                "population": "N/A",
-                                "units": "N/A"
-                            }
-                        )
+                    outcome_node = process_outcome(outcome, "secondary")
+                    if outcome_node:
+                        yield outcome_node
         except Exception as e:
             logger.error(f"Error processing study nodes for study {study.get('nctId', 'unknown')}: {str(e)}")
+            logger.error(f"Exception details: {type(e).__name__}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     def _process_study_edges(self, study):
         """
@@ -409,29 +465,35 @@ class ClinicalTrialsAdapter:
             if ClinicalTrialsAdapterEdgeType.SPONSOR_HAS_STUDY in self.edge_types:
                 lead_sponsor = protocol.get("sponsorCollaboratorsModule", {}).get("leadSponsor")
                 if lead_sponsor and lead_sponsor.get("name"):
-                    yield (None, lead_sponsor["name"], _id, "sponsor_has_study", {"lead_or_collaborator": "lead"})
+                    sponsor_name = self._ensure_string(lead_sponsor.get("name"))
+                    yield (None, sponsor_name, _id, "sponsor_has_study", {"lead_or_collaborator": "lead"})
 
             # Study to condition edges
             conditions = protocol.get("conditionsModule", {}).get("conditions", [])
             interventions = protocol.get("armsInterventionsModule", {}).get("interventions", [])
             
+            # Process conditions with proper type handling
             for condition in conditions:
                 if condition:
+                    condition_name = self._ensure_string(condition)
+                    
                     # Study has condition
                     if ClinicalTrialsAdapterEdgeType.STUDY_HAS_CONDITION in self.edge_types:
-                        yield (None, _id, condition, "study_has_condition", {})
+                        yield (None, _id, condition_name, "study_has_condition", {})
                     
                     # Condition has intervention
                     if ClinicalTrialsAdapterEdgeType.CONDITION_HAS_INTERVENTION in self.edge_types:
                         for intervention in interventions:
                             if intervention and intervention.get("name"):
-                                yield (None, condition, intervention["name"], "condition_has_intervention", {})
+                                intervention_name = self._ensure_string(intervention.get("name"))
+                                yield (None, condition_name, intervention_name, "condition_has_intervention", {})
 
             # Study to intervention edges
             if ClinicalTrialsAdapterEdgeType.STUDY_HAS_INTERVENTION in self.edge_types:
                 for intervention in interventions:
                     if intervention and intervention.get("name"):
-                        yield (None, _id, intervention["name"], "study_has_intervention", {})
+                        intervention_name = self._ensure_string(intervention.get("name"))
+                        yield (None, _id, intervention_name, "study_has_intervention", {})
 
             # Study to outcome edges
             if ClinicalTrialsAdapterEdgeType.STUDY_HAS_OUTCOME in self.edge_types:
@@ -440,14 +502,19 @@ class ClinicalTrialsAdapter:
                 # Primary outcomes
                 for outcome in outcomes_module.get("primaryOutcomes", []):
                     if outcome and outcome.get("measure"):
-                        yield (None, _id, outcome["measure"], "study_has_outcome", {"type": "primary"})
+                        measure = self._ensure_string(outcome.get("measure"))
+                        yield (None, _id, measure, "study_has_outcome", {"type": "primary"})
                 
                 # Secondary outcomes
                 for outcome in outcomes_module.get("secondaryOutcomes", []):
                     if outcome and outcome.get("measure"):
-                        yield (None, _id, outcome["measure"], "study_has_outcome", {"type": "secondary"})
+                        measure = self._ensure_string(outcome.get("measure"))
+                        yield (None, _id, measure, "study_has_outcome", {"type": "secondary"})
         except Exception as e:
             logger.error(f"Error processing study edges for study {study.get('nctId', 'unknown')}: {str(e)}")
+            logger.error(f"Exception details: {type(e).__name__}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     def get_nodes(self):
         """
@@ -536,6 +603,15 @@ class ClinicalTrialsAdapter:
         Returns:
             A dictionary of properties.
         """
+        # Define field type categories
+        integer_fields = [ClinicalTrialsAdapterStudyField.ENROLLMENT]
+        date_fields = [
+            ClinicalTrialsAdapterStudyField.START_DATE,
+            ClinicalTrialsAdapterStudyField.COMPLETION_DATE
+        ]
+        list_fields = [ClinicalTrialsAdapterStudyField.PHASE]
+        # All other fields are treated as strings
+
         props = {}
 
         for field in self.node_fields:
@@ -545,20 +621,42 @@ class ClinicalTrialsAdapter:
             if field == ClinicalTrialsAdapterStudyField.ID:
                 continue
 
+            # Extract raw value from the study data
             path = field.value.split("/")
             value = study.get("protocolSection")
-
             if value:
                 for step in path:
                     if value:
                         value = value.get(step)
 
-            if isinstance(value, list):
-                value = [replace_quote(v) for v in value]
-            elif isinstance(value, str):
-                value = replace_quote(value)
+            # Apply type-specific conversions
+            field_name = field.name.lower()
 
-            props.update({field.name.lower(): value or "N/A"})
+            # 1. Handle integer fields
+            if field in integer_fields:
+                value = self._ensure_int(value)
+
+            # 2. Handle date fields
+            elif field in date_fields:
+                value = self._ensure_date(value)
+
+            # 3. Handle list fields
+            elif field in list_fields:
+                if isinstance(value, list):
+                    value = self._format_list(value)
+                else:
+                    value = self._ensure_string(value)
+            
+            # 4. Handle any remaining lists (not in specific list_fields)
+            elif isinstance(value, list):
+                value = self._format_list(value)
+            
+            # 5. Handle string values (default case)
+            else:
+                value = self._ensure_string(value)
+
+            # Update the properties dictionary
+            props[field_name] = value if value is not None else "N/A"
 
         return props
 
