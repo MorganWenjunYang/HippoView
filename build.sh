@@ -120,7 +120,10 @@ fi
 echo "Building knowledge graph image..."
 if ! docker buildx build --platform linux/$PLATFORM \
     --build-arg BASE_IMAGE="$BASE_IMAGE" \
-    -f Dockerfile.kg -t biocypher-kg .; then
+    -f Dockerfile.kg \
+    -t biocypher-kg \
+    --load \
+    --no-cache .; then
     echo "Error: Failed to build knowledge graph image"
     exit 1
 fi
