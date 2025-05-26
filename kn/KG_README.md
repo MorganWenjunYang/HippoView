@@ -33,14 +33,13 @@ http://localhost:7474
 2. In remote host:
 
 ```bash
-docker run -d \
+docker run --pull always -d \
   --name biocypher-kg \
   --platform linux/amd64 \
   -p 7474:7474 -p 7687:7687 \
   -e NEO4J_AUTH=neo4j/neo4jpassword \
   -e NEO4J_ACCEPT_LICENSE_AGREEMENT=yes \
-  --entrypoint=/bin/bash \
-  {YOUR IMAGE REGISTRY PATH}/biocypher-kg:amd64 
+  {YOUR_IMAGE_REGISTRY}/biocypher-kg:{YOUR_TAG} 
 
 ```
 
@@ -54,32 +53,8 @@ Once the container is running and the knowledge graph is built:
 ## Example Queries
 
 Try these Cypher queries in the Neo4j browser:
+```
 
-```cypher
-// Count all nodes by type
-MATCH (n) 
-RETURN labels(n) AS NodeType, count(*) AS Count 
-ORDER BY Count DESC;
-
-// Get all trials for a specific condition
-MATCH (c:condition)-[:condition_has_study]->(s:study) 
-WHERE c.name = 'Breast Cancer'
-RETURN s.nct_id, s.brief_summary 
-LIMIT 10;
-
-// Find interventions used for a specific condition
-MATCH (c:condition)-[:condition_has_intervention]->(i:intervention)
-WHERE c.name = 'Breast Cancer' 
-RETURN i.name, count(*) AS frequency
-ORDER BY frequency DESC
-LIMIT 10;
-
-// Find most common outcomes for an intervention
-MATCH (i:intervention)-[:intervention_has_outcome]->(o:outcome)
-WHERE i.name = 'Pembrolizumab'
-RETURN o.title, count(*) AS frequency
-ORDER BY frequency DESC
-LIMIT 10;
 ```
 
 ## Structure
@@ -106,6 +81,9 @@ And relationships between them:
 
 To customize the knowledge graph schema, edit:
 - `kn/kn_schema.yaml`
-- `kn/adaptor_xxx`
+- `kn/bc_adaptor_xxx`
+
+To customize the studies included or the scope, edit:
+- `kn/bc_adaptor_ctgovAPI.py` -> QUERY_PARAMS
 
 Then redo the above steps accordingly.
