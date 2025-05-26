@@ -36,4 +36,5 @@ COPY --from=setup-stage /usr/app/biocypher-log/ /usr/app/biocypher-log/
 # RUN test -f /usr/app/biocypher_entrypoint_patch.sh && cp /usr/app/biocypher_entrypoint_patch.sh /usr/app/ || echo "Patch file not found, continuing without it"
 
 # Set the entrypoint to the startup script
-ENTRYPOINT ["/usr/app/biocypher-out/neo4j-admin-import-call.sh"]
+# ENTRYPOINT # Set the entrypoint to run both the import and Neo4j
+ENTRYPOINT ["/bin/bash", "-c", "/usr/app/biocypher-out/neo4j-admin-import-call.sh && exec /docker-entrypoint.sh neo4j"]
