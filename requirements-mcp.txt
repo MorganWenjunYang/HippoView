@@ -1,0 +1,46 @@
+# MCP RAG Requirements
+# Install with: pip install -r requirements-mcp.txt
+
+# Core MCP and FastMCP
+fastmcp
+
+# RAG and vector stores
+langchain>=0.1.0
+langchain-community>=0.0.20
+langchain-core>=0.1.0
+sentence-transformers>=2.0.0
+
+# Database connections
+pymongo>=4.0.0
+neo4j>=5.0.0
+
+# LLM providers (choose based on your needs)
+langchain-openai>=0.0.5
+langchain-anthropic>=0.1.0
+langchain-mistralai>=0.0.1
+langchain-google-genai>=0.0.1
+
+# HTTP requests for MCP communication
+requests>=2.28.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Search tools for ReAct agent
+duckduckgo-search>=5.0.0
+wikipedia>=1.4.0
+arxiv>=1.4.0
+
+# Optional: Enhanced search
+# tavily-python>=0.3.0  # Requires TAVILY_API_KEY
+
+# LangGraph for agent workflow
+langgraph>=0.0.40
+
+# Utility packages
+pydantic>=2.0.0
+typing-extensions>=4.0.0
+
+# Optional: For better embeddings
+# torch>=2.0.0  # For GPU acceleration
+# transformers>=4.30.0  # For custom embedding models 

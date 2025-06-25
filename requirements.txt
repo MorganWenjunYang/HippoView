@@ -39,7 +39,7 @@ distro==1.9.0
 dnspython==2.7.0
 docopt==0.6.2
 dotenv==0.9.9
-dspy==2.6.16
+# dspy==2.6.16
 duckduckgo_search==8.0.1
 dulwich==0.22.8
 et_xmlfile==2.0.0

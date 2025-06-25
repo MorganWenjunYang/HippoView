@@ -420,7 +420,7 @@ def parse_arguments():
     parser.add_argument("--llm", default="mistral", 
                       choices=["openai", "anthropic", "huggingface", "mistral", "gemini"],
                       help="LLM provider to use")
-    parser.add_argument("--embedding", default="trial2vec", 
+    parser.add_argument("--embedding", default="huggingface", 
                       choices=["openai", "huggingface", "cohere", "mistral", "biobert", "trial2vec", "BGE-M3"],
                       help="Embedding provider to use")
     parser.add_argument("--model", default="mistral-large-latest", 
