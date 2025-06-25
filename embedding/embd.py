@@ -8,19 +8,6 @@ import os
 import pandas as pd
 import pickle   
 
-# def embed_documents_hf(embedding_model):
-#     # embed documents with embedding_models in huggingface
-#     # load documents from mongo db
-#     loader = MongoDBLoader(
-#         database="clinical_trials",
-#         collection="trialgpt_trials",
-#     )   
-#     documents = loader.load()
-#     # embed documents with embedding_models in huggingface and save to mongo db
-#     embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
-#     documents = embeddings.embed_documents(documents)
-#     return documents
-
 
 def get_embedding_model(provider: str = "huggingface") -> Embeddings:
     """Get embedding model based on provider.

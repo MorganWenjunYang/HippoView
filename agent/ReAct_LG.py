@@ -24,7 +24,7 @@ from langchain_community.utilities import WikipediaAPIWrapper, ArxivAPIWrapper
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import from RAG directory
-from RAG.rag import get_llm_model, get_embedding_model, setup_retriever, fetch_trials_from_mongo, transform_trials_to_documents, create_vectorstore
+from RAG.rag_utils import get_llm_model, get_embedding_model, setup_retriever, fetch_trials_from_mongo, transform_trials_to_documents, create_vectorstore
 
 # Define the graph state
 class AgentState(TypedDict):

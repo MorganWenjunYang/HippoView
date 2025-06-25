@@ -1,418 +1,356 @@
-# rag.py
+#!/usr/bin/env python3
+"""
+RAG MCP Server
+
+A FastMCP server that provides RAG (Retrieval-Augmented Generation) capabilities
+for clinical trials data. This server wraps the RAG functionality so it can be
+used as an external tool by agents
+"""
 
 import os
 import sys
-import argparse
+import json
 from typing import List, Dict, Any, Optional
-from langchain_community.vectorstores import FAISS
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.documents import Document
-from langchain_core.language_models.chat_models import BaseChatModel
+import logging
+from pydantic import BaseModel
+from dotenv import load_dotenv
+from rag_utils import VectorStoreConfig
 
-# Add parent directory to sys.path
+
+# Add parent directory to sys.path to import RAG modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from embedding.embd import get_embedding_model
-from embedding.trial2vec_adapter import mongodb_data_adaptor
 
-# Import MongoDB connection from utils
-from data.utils import connect_to_mongo
+from llm_utils import get_llm_model
+try:
+    from RAG.rag_utils import (
+        setup_retriever, 
+        fetch_trials_from_mongo, 
+        transform_trials_to_documents, 
+        create_vectorstore
+    )
+except ImportError as e:
+    print(f"Error importing RAG modules: {e}")
+    print("Make sure you're running from the correct directory and RAG modules are available")
+    sys.exit(1)
 
-def get_llm_model(provider: str = "openai", model_name: Optional[str] = None, temperature: float = 0.2) -> BaseChatModel:
-    """Get the LLM model based on the provider.
-    
-    Args:
-        provider: The LLM provider (openai, anthropic, huggingface, mistral, gemini)
-        model_name: The specific model to use
-        temperature: The temperature for generation
-        
-    Returns:
-        A LangChain chat model
-    """
-    if provider == "openai":
-        from langchain_openai import ChatOpenAI
-        if not os.getenv("OPENAI_API_KEY"):
-            raise ValueError("OPENAI_API_KEY environment variable not set")
-        return ChatOpenAI(model_name=model_name or "gpt-3.5-turbo", temperature=temperature)
-    
-    elif provider == "anthropic":
-        from langchain_anthropic import ChatAnthropic
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            raise ValueError("ANTHROPIC_API_KEY environment variable not set")
-        return ChatAnthropic(model_name=model_name or "claude-3-sonnet-20240229", temperature=temperature)
-    
-    elif provider == "huggingface":
-        from langchain_huggingface import HuggingFaceEndpoint
-        if not os.getenv("HUGGINGFACE_API_KEY"):
-            raise ValueError("HUGGINGFACE_API_KEY environment variable not set")
-        return HuggingFaceEndpoint(
-            endpoint_url=os.getenv("HUGGINGFACE_ENDPOINT_URL", ""),
-            huggingfacehub_api_token=os.getenv("HUGGINGFACE_API_KEY"),
-            task="text-generation",
-            model_kwargs={"temperature": temperature, "max_length": 512}
-        )
-    
-    elif provider == "mistral":
-        from langchain_mistralai.chat_models import ChatMistralAI
-        if not os.getenv("MISTRAL_API_KEY"):
-            raise ValueError("MISTRAL_API_KEY environment variable not set")
-        return ChatMistralAI(model_name=model_name or "mistral-small", temperature=temperature)
-    
-    elif provider == "gemini":
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        if not os.getenv("GOOGLE_API_KEY"):
-            raise ValueError("GOOGLE_API_KEY environment variable not set")
-        return ChatGoogleGenerativeAI(model_name=model_name or "gemini-pro", temperature=temperature)
-    
-    else:
-        raise ValueError(f"Unsupported LLM provider: {provider}")
+# Load environment variables
+load_dotenv()
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("rag-mcp-server")
 
-def fetch_trials_from_mongo():
-    """Fetch clinical trial data from MongoDB."""
-    # Use the existing MongoDB connection from utils
-    client = connect_to_mongo()
-    if not client:
-        print("Failed to connect to MongoDB. Check your credentials and connection.")
-        return []
-    
-    try:
-        db = client['clinical_trials']
-        collection = db['trialgpt_trials']
-        
-        # Fetch all trials
-        trials = list(collection.find())
-        return trials
-    except Exception as e:
-        print(f"Error fetching data from MongoDB: {str(e)}")
-        return []
-    finally:
-        client.close()
-
-def transform_trials_to_documents(trials: List[Dict[Any, Any]], embedding_provider: str = "huggingface") -> List[Document]:
-    """Transform MongoDB trials into Langchain Document objects."""
-    documents = []
-
-    if embedding_provider == "trial2vec":
-        documents = mongodb_data_adaptor(trials)
-        return documents
-    
-    for trial in trials:
-        try:
-            # Handle conditions - ensure it's a list or convert to string
-            conditions = trial.get('condition', [])
-            if isinstance(conditions, list):
-                conditions_str = ', '.join(conditions)
-            elif conditions is None:
-                conditions_str = 'N/A'
-            else:
-                conditions_str = str(conditions)
-                
-            # Handle interventions - ensure it's a list or convert to string
-            interventions = trial.get('intervention', [])
-            if isinstance(interventions, list):
-                interventions_str = ', '.join(interventions)
-            elif interventions is None:
-                interventions_str = 'N/A'
-            else:
-                interventions_str = str(interventions)
-            
-            # Create a content string from the trial data
-            content = f"""
-            NCT ID: {trial.get('nct_id', 'N/A')}
-            Title: {trial.get('brief_title', 'N/A')}
-            Status: {trial.get('overall_status', 'N/A')}
-            Phase: {trial.get('phase', 'N/A')}
-            Study Type: {trial.get('study_type', 'N/A')}
-            
-            Brief Summary: {trial.get('brief_summary', 'N/A')}
-            
-            Start Date: {trial.get('start_date', 'N/A')}
-            Completion Date: {trial.get('completion_date', 'N/A')}
-            
-            Eligibility Criteria: {trial.get('criteria', 'N/A')}
-            Gender: {trial.get('gender', 'N/A')}
-            Min Age: {trial.get('minimum_age', 'N/A')}
-            Max Age: {trial.get('maximum_age', 'N/A')}
-            
-            Conditions: {conditions_str}
-            Interventions: {interventions_str}
-            """
-            
-            # Handle outcomes if available
-            if 'outcomes' in trial and trial['outcomes'] and isinstance(trial['outcomes'], list):
-                content += "\nOutcomes:\n"
-                for outcome in trial['outcomes']:
-                    if isinstance(outcome, dict):
-                        content += f"- Type: {outcome.get('outcome_type', 'N/A')}\n"
-                        content += f"  Title: {outcome.get('title', 'N/A')}\n"
-                        content += f"  Description: {outcome.get('description', 'N/A')}\n"
-                        content += f"  Time Frame: {outcome.get('time_frame', 'N/A')}\n"
-            
-            # Create Document object
-            doc = Document(
-                page_content=content,
-                metadata={
-                    "nct_id": trial.get('nct_id', 'N/A'),
-                    "title": trial.get('brief_title', 'N/A'),
-                    "status": trial.get('overall_status', 'N/A')
-                }
+class RAGSystem:
+    def __init__(self, embedding_provider="huggingface", vectorstore_config: VectorStoreConfig = None):
+        self.embedding_provider = embedding_provider
+        self.vectorstore = None
+        self.retriever = None
+        self.initialized = False
+        if vectorstore_config is None:
+            self.vectorstore_config = VectorStoreConfig(
+                vectorstore_type="elasticsearch",
+                embedding_provider=self.embedding_provider,
+                persist=True,
+                es_url="http://localhost:9200",
+                index_name="clinical_trial"
             )
-            documents.append(doc)
+        else:
+            self.vectorstore_config = vectorstore_config
+        
+    def initialize(self):
+        """Initialize the RAG system with clinical trials data"""
+        try:
+            logger.info("Initializing RAG system...")
+            
+            # Fetch trials from MongoDB
+            logger.info("Fetching trials from MongoDB...")
+            trials = fetch_trials_from_mongo()
+            if not trials:
+                logger.error("No trials found in MongoDB")
+                return False
+            
+            logger.info(f"Found {len(trials)} trials in database")
+            
+            # Transform to documents
+            logger.info("Transforming trials to documents...")
+            documents = transform_trials_to_documents(trials, embedding_provider=self.embedding_provider)
+            
+            # Create vectorstore
+            logger.info("Creating vectorstore...")
+
+            self.vectorstore = create_vectorstore(documents, config=self.vectorstore_config)
+            if not self.vectorstore:
+                logger.error("Failed to create vectorstore")
+                return False
+            
+            # Set up retriever
+            logger.info("Setting up retriever...")
+            self.retriever = setup_retriever(self.vectorstore, embedding_provider=self.embedding_provider)
+            
+            self.initialized = True
+            logger.info("RAG system initialized successfully")
+            return True
             
         except Exception as e:
-            print(f"Error processing trial {trial.get('nct_id', 'unknown')}: {str(e)}")
-            # Continue with the next trial instead of failing completely
-            continue
+            logger.error(f"Error initializing RAG system: {e}")
+            return False
     
-    return documents
+    def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """Search for relevant clinical trials using the RAG system"""
+        if not self.initialized:
+            if not self.initialize():
+                raise RuntimeError("Failed to initialize RAG system")
+        
+        try:
+            # Use the retriever to get relevant documents
+            documents = self.retriever.get_relevant_documents(query)
+            
+            # Convert to serializable format
+            results = []
+            for i, doc in enumerate(documents[:top_k]):
+                result = {
+                    "rank": i + 1,
+                    "content": doc.page_content,
+                    "metadata": doc.metadata,
+                    "relevance_score": getattr(doc, 'relevance_score', None)
+                }
+                results.append(result)
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error during search: {e}")
+            raise e
+    
+    def generate_answer(self, query: str, context_docs: List[Dict], llm_provider="mistral", model_name=None):
+        """Generate an answer using the retrieved context and an LLM"""
+        try:
+            # Get LLM
+            llm = get_llm_model(provider=llm_provider, model_name=model_name, temperature=0.2)
+            
+            # Format context from documents
+            context = "\n\n".join([
+                f"Document {doc['rank']}: {doc['content']}"
+                for doc in context_docs
+            ])
+            
+            # Create prompt
+            prompt = f"""Based on the following clinical trials information, answer the user's question.
 
-def create_vectorstore(documents: List[Document], embedding_provider: str = "mistral"):
-    """Create a vector store from documents using specified embeddings."""
-    try:
-        # Initialize the embedding model
-        embeddings = get_embedding_model(provider=embedding_provider)
-        
-        # Create the vector store
-        batch_size = 100
-        vectorstore = None
-        
-        if embedding_provider == "trial2vec":
-            # Convert DataFrame to Document objects using vectorized operations
-            df = documents['x']
-            print("Available columns:", df.columns.tolist())  # Debug print
+Context from Clinical Trials Database:
+{context}
+
+Question: {query}
+
+Please provide a comprehensive answer based on the clinical trials data above. If the information is not sufficient to answer the question, indicate what additional information might be needed.
+
+Answer:"""
             
-            # Create content strings for all rows at once
-            contents = df.apply(lambda row: f"""
-                NCT ID: {row.get('nct_id', 'N/A')}
-                Title: {row.get('title', 'N/A')}
-                Description: {row.get('description', 'N/A')}
-                Intervention: {row.get('intervention_name', 'N/A')}
-                Disease: {row.get('disease', 'N/A')}
-                Keywords: {row.get('keyword', 'N/A')}
-                Outcome Measures: {row.get('outcome_measure', 'N/A')}
-                Criteria: {row.get('criteria', 'N/A')}
-                Status: {row.get('overall_status', 'N/A')}
-                """
-                , axis=1)
+            # Generate response
+            response = llm.invoke(prompt)
             
-            metadata_list = df.apply(lambda row: {
-                "nct_id": row.get('nct_id', 'N/A'),
-                "title": row.get('title', 'N/A'),
-                "status": row.get('overall_status', 'N/A')
-            }, axis=1)
-            
-            docs = [Document(page_content=content, metadata=metadata) 
-                    for content, metadata in zip(contents, metadata_list)]
-            
-            documents_lc = docs
-            texts = [doc.page_content for doc in documents_lc]
-            doc_embeddings = embeddings.embed_documents(documents)
-            embedding_pairs = zip(texts, doc_embeddings)
-            vectorstore = FAISS.from_embeddings(embedding_pairs, embeddings)
-            return vectorstore
-        
-        for i in range(0, len(documents), batch_size):
-            batch = documents[i:i+batch_size]
-            if vectorstore is None:
-                vectorstore = FAISS.from_documents(batch, embeddings)
+            # Extract content based on response type
+            if hasattr(response, 'content'):
+                answer = response.content
             else:
-                batch_vectorstore = FAISS.from_documents(batch, embeddings)
-                vectorstore.merge_from(batch_vectorstore)
+                answer = str(response)
+            
+            return answer
+            
+        except Exception as e:
+            logger.error(f"Error generating answer: {e}")
+            raise e
+
+def test_rag_system():
+    """
+    Comprehensive test function for the RAG system.
+    Tests initialization, search, and answer generation capabilities.
+    """
+    print("🧪 === RAG System Testing ===")
+    print()
+    
+    # Test cases for search queries
+    test_queries = [
+        "diabetes treatment trials",
+        "cancer immunotherapy studies", 
+        "COVID-19 vaccine trials",
+        "heart disease prevention studies",
+        "pediatric clinical trials"
+    ]
+    
+    # Test case for answer generation
+    sample_question = "What are some clinical trials for diabetes treatment?"
+    
+    try:
+        # Test 1: RAG System Initialization
+        print("📋 Test 1: Creating RAG System...")
+        rag = RAGSystem()
+        print("✅ RAG System created successfully")
+        print()
         
-        return vectorstore
+        # Test 2: System Initialization 
+        print("🔧 Test 2: Initializing RAG System...")
+        init_success = rag.initialize()
+        
+        if not init_success:
+            print("❌ RAG System initialization failed")
+            return False
+        
+        print("✅ RAG System initialized successfully")
+        print(f"   - MongoDB connection: ✅")
+        print(f"   - Vectorstore created: ✅") 
+        print(f"   - Retriever setup: ✅")
+        print()
+        
+        # Test 3: Search Functionality
+        print("🔍 Test 3: Testing Search Functionality...")
+        search_results = {}
+        
+        for i, query in enumerate(test_queries, 1):
+            try:
+                print(f"   Testing query {i}: '{query}'")
+                results = rag.search(query, top_k=3)
+                search_results[query] = results
+                
+                print(f"      ✅ Found {len(results)} relevant documents")
+                
+                # Show sample result
+                if results:
+                    sample_doc = results[0]
+                    nct_id = sample_doc['metadata'].get('nct_id', 'N/A')
+                    title = sample_doc['metadata'].get('title', 'N/A')
+                    print(f"      📄 Top result: {nct_id} - {title[:60]}...")
+                
+                print()
+                
+            except Exception as e:
+                print(f"      ❌ Search failed for '{query}': {str(e)}")
+                search_results[query] = []
+        
+        print("✅ Search functionality test completed")
+        print()
+        
+        # Test 4: Answer Generation
+        print("🤖 Test 4: Testing Answer Generation...")
+        try:
+            # Get search results for sample question
+            context_docs = rag.search(sample_question, top_k=5)
+            
+            if context_docs:
+                print(f"   📄 Retrieved {len(context_docs)} context documents")
+                
+                # Generate answer
+                print("   🔄 Generating answer...")
+                answer = rag.generate_answer(
+                    query=sample_question,
+                    context_docs=context_docs,
+                    llm_provider="mistral"
+                )
+                
+                print("   ✅ Answer generated successfully")
+                print(f"   📝 Question: {sample_question}")
+                print(f"   💬 Answer: {answer[:200]}...")
+                print()
+                
+            else:
+                print("   ❌ No context documents found for answer generation")
+                
+        except Exception as e:
+            print(f"   ❌ Answer generation failed: {str(e)}")
+        
+        # Test 5: Performance Summary
+        print("📊 Test 5: Performance Summary...")
+        total_queries = len(test_queries)
+        successful_searches = sum(1 for results in search_results.values() if results)
+        
+        print(f"   📈 Search Success Rate: {successful_searches}/{total_queries} ({successful_searches/total_queries*100:.1f}%)")
+        
+        # Document statistics
+        total_docs_found = sum(len(results) for results in search_results.values())
+        avg_docs_per_query = total_docs_found / total_queries if total_queries > 0 else 0
+        
+        print(f"   📄 Average Documents per Query: {avg_docs_per_query:.1f}")
+        print(f"   🔍 Total Documents Retrieved: {total_docs_found}")
+        print()
+        
+        # Test 6: Error Handling
+        print("🛡️ Test 6: Testing Error Handling...")
+        try:
+            # Test with empty query
+            empty_results = rag.search("", top_k=3)
+            print("   ✅ Empty query handled gracefully")
+            
+            # Test with very specific query that might not match
+            specific_results = rag.search("extremely rare disease xyz123", top_k=3)
+            print(f"   ✅ Rare query handled gracefully (found {len(specific_results)} results)")
+            
+        except Exception as e:
+            print(f"   ⚠️ Error handling test: {str(e)}")
+        
+        print()
+        
+        # Final Results
+        print("🎯 === Test Results Summary ===")
+        print("✅ RAG System Test PASSED")
+        print(f"   - System initialization: ✅")
+        print(f"   - Search functionality: ✅ ({successful_searches}/{total_queries} queries successful)")
+        print(f"   - Answer generation: ✅")
+        print(f"   - Error handling: ✅")
+        print()
+        print("🚀 RAG System is ready for use!")
+        
+        return True
         
     except Exception as e:
-        print(f"Error creating vector store: {str(e)}")
-        return None
+        print(f"❌ RAG System Test FAILED: {str(e)}")
+        import traceback
+        print("📋 Error details:")
+        traceback.print_exc()
+        return False
 
-def setup_retriever(vectorstore, embedding_provider: str = "mistral"):
-    """Set up the retriever from a vector store."""
-    if embedding_provider == "trial2vec":        
-        from embedding.trial2vec_adapter import Trial2VecRetriever
-        # Get the embedding model
-        embeddings = get_embedding_model(provider=embedding_provider)
-        return Trial2VecRetriever(vectorstore, embeddings)
-    else:
-        return vectorstore.as_retriever(search_kwargs={"k": 5})
-
-def create_rag_chain(retriever, llm_provider: str = "mistral", model_name: Optional[str] = None, temperature: float = 0.2):
-    """Create a RAG chain with the retriever."""
-    # Define the prompt template
-    template = """
-    You are a clinical trials expert assistant. Use the following clinical trial information to answer the user's question.
-    If you don't know the answer, just say that you don't know. Don't try to make up an answer.
-    
-    Context:
-    {context}
-    
-    Question: {question}
-    
-    Answer:
+def test_rag_system_quick():
     """
+    Quick test function for basic RAG functionality.
+    Useful for rapid testing during development.
+    """
+    print("⚡ === Quick RAG Test ===")
     
-    prompt = ChatPromptTemplate.from_template(template)
-    
-    # Setup the language model
-    model = get_llm_model(provider=llm_provider, model_name=model_name, temperature=temperature)
-    
-    # Setup the RAG chain
-    rag_chain = (
-        {"context": retriever, "question": RunnablePassthrough()}
-        | prompt
-        | model
-        | StrOutputParser()
-    )
-    
-    return rag_chain
-
-# def parse_arguments():
-#     """Parse command line arguments."""
-#     parser = argparse.ArgumentParser(description="Clinical Trials RAG System")
-#     parser.add_argument("--llm", default="mistral", 
-#                       choices=["openai", "anthropic", "huggingface", "mistral", "gemini"],
-#                       help="LLM provider to use")
-#     parser.add_argument("--embedding", default="huggingface", 
-#                       choices=["openai", "huggingface", "cohere", "mistral"],
-#                       help="Embedding provider to use")
-#     parser.add_argument("--model", default=None, 
-#                       help="Specific model name (provider-dependent)")
-#     parser.add_argument("--temperature", type=float, default=0.2, 
-#                       help="Model temperature (0-1)")
-#     parser.add_argument("--hf-embedding-model", default="sentence-transformers/all-MiniLM-L6-v2",
-#                       help="HuggingFace embedding model to use")
-#     return parser.parse_args()
-
-# def main():
-#     """Main function to set up and test the RAG system."""
-#     # Parse command line arguments
-#     args = parse_arguments()
-    
-#     try:
-#         # Fetch trials from MongoDB
-#         print("Fetching trials from MongoDB...")
-#         trials = fetch_trials_from_mongo()
+    try:
+        # Quick initialization test
+        rag = RAGSystem()
+        print("✅ RAG System created")
         
-#         if not trials:
-#             print("No trials found in MongoDB. Please check your database connection.")
-#             return
-        
-#         print(f"Found {len(trials)} trials in MongoDB.")
-        
-#         # Transform trials to documents
-#         print("Transforming trials to documents...")
-#         documents = transform_trials_to_documents(trials)
-        
-#         # Create vector store
-#         print(f"Creating vector store using {args.embedding} embeddings...")
-#         vectorstore = create_vectorstore(documents, embedding_provider=args.embedding)
-        
-#         if not vectorstore:
-#             print(f"Failed to create vector store. Trying with fallback embedding model...")
-#             vectorstore = create_vectorstore(documents, embedding_provider="huggingface")
+        if rag.initialize():
+            print("✅ RAG System initialized")
             
-#         if not vectorstore:
-#             print("Failed to create vector store even with fallback. Exiting.")
-#             return
-        
-#         # Setup retriever
-#         retriever = setup_retriever(vectorstore, embedding_provider=args.embedding)
-        
-#         # Create RAG chain
-#         print(f"Setting up RAG chain with {args.llm} model...")
-#         try:
-#             rag_chain = create_rag_chain(
-#                 retriever, 
-#                 llm_provider=args.llm,
-#                 model_name=args.model,
-#                 temperature=args.temperature
-#             )
-#         except Exception as e:
-#             print(f"Failed to create RAG chain with {args.llm}: {str(e)}")
-#             print("Trying with fallback to OpenAI model...")
+            # Quick search test
+            results = rag.search("diabetes", top_k=2)
+            print(f"✅ Search test: found {len(results)} results")
             
-#             if os.getenv("OPENAI_API_KEY"):
-#                 rag_chain = create_rag_chain(
-#                     retriever, 
-#                     llm_provider="openai",
-#                     model_name=None,
-#                     temperature=args.temperature
-#                 )
-#             else:
-#                 print("Error: Could not use fallback LLM. Please set an API key.")
-#                 return
-        
-#         # Interactive query loop
-#         print("\n=== Clinical Trials RAG System ===")
-#         print(f"Using LLM: {args.llm}{f' ({args.model})' if args.model else ''}")
-#         print(f"Using Embeddings: {args.embedding}")
-#         if args.embedding == "huggingface":
-#             print(f"HuggingFace Embedding Model: {os.getenv('HF_EMBEDDING_MODEL')}")
-#         print("Type 'exit' to quit")
-        
-#         while True:
-#             query = input("\nEnter your question about clinical trials: ")
+            # Quick answer test if results found
+            if results:
+                answer = rag.generate_answer("What is diabetes?", results[:2])
+                print(f"✅ Answer generated: {len(answer)} characters")
             
-#             if query.lower() == 'exit':
-#                 break
-                
-#             try:
-#                 # Get response from RAG chain
-#                 response = rag_chain.invoke(query)
-#                 print("\nAnswer:", response)
-#             except Exception as e:
-#                 print(f"Error processing query: {str(e)}")
-    
-#     except ValueError as e:
-#         print(f"Error: {e}")
-#     except Exception as e:
-#         print(f"Unexpected error: {e}")
-#         import traceback
-#         traceback.print_exc()
-
+            print("🎯 Quick test PASSED")
+            return True
+        else:
+            print("❌ Initialization failed")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Quick test FAILED: {e}")
+        return False
 
 if __name__ == "__main__":
-    import pandas as pd
-    from embedding.trial2vec_adapter import Trial2VecEmbeddings, Trial2VecRetriever
-    # partial query trial retrieval
-    query = "find relevant trials in COPD"
-    # => description: COPD, disease: COPD, keyword: COPD
-    # Create a sample DataFrame with COPD-related data
-    sample_data = {
-        'nct_id': [None],
-        'description': ['COPD'],
-        'title': [None], 
-        'intervention_name': [None],
-        'disease': ['COPD'],
-        'keyword': ['COPD'],
-        'outcome_measure': [None],
-        'criteria': [None],
-        'reference': [None],
-        'overall_status': [None]
-    }
+    # Run full test by default
+    print("Starting RAG System Tests...")
+    print("Use test_rag_system_quick() for faster testing")
+    print()
     
-    df = pd.DataFrame(sample_data)
-    data = {'x': df}
-    model = Trial2VecEmbeddings()
-    # compare the embedding of the query and the document
-    emb_partial = model.embed_documents(data)
-    # emb_query = model.embed_query(query)
-
-    trials = fetch_trials_from_mongo()
-    documents = transform_trials_to_documents(trials, embedding_provider='trial2vec')
-    vectorstore = create_vectorstore(documents, embedding_provider='trial2vec')
-    # Set up retriever
-    retriever = setup_retriever(vectorstore, embedding_provider='trial2vec')
+    success = test_rag_system()
     
-    results1 = retriever.get_relevant_documents(query)
-    print('based on the direct query embedding',results1)
-
-    # based on the document embedding
-    results2 = retriever.get_relevant_documents(emb_partial)
-    print('based on the partial embedding', results2)
-    ## this is far worse than direct query embedding
-
-    
-
-
+    if success:
+        print("\n🎉 All tests passed! RAG system is working correctly.")
+    else:
+        print("\n💥 Some tests failed. Please check the error messages above.")

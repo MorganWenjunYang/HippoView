@@ -32,7 +32,7 @@ from langchain_community.utilities import WikipediaAPIWrapper, ArxivAPIWrapper
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import only LLM functionality from RAG
-from RAG.rag import get_llm_model
+from RAG.rag_utils import get_llm_model
 
 # Define the graph state
 class AgentState(TypedDict):
