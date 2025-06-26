@@ -1,10 +1,14 @@
 import json
+import logging
 from typing import Optional
 from fastmcp import FastMCP
-from fastmcp.logger import logger
 from fastmcp.tools import tool
 
-from RAG.rag_utils import RAGSystem
+# Configure logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+from rag import RAGSystem
 
 # Initialize the RAG system
 rag_system = RAGSystem()
@@ -225,7 +229,7 @@ def main():
         logger.warning("RAG system initialization failed. Will retry on first request.")
     
     # Run the MCP server
-    mcp.run()
+    mcp.run(transport="http", host="127.0.0.1", port=8000, path="/mcp")
 
 if __name__ == "__main__":
     main() 
