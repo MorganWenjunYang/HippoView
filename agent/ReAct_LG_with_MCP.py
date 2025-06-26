@@ -3,12 +3,11 @@
 ReAct_LG_with_MCP.py - ReAct agent implementation using LangGraph with MCP RAG tool
 
 This version uses an external RAG MCP server as a tool instead of built-in RAG functionality.
+The agent only checks MCP server availability and does not start it (for docker-compose deployment).
 """
 
 import os
 import sys
-import subprocess
-import time
 import json
 import requests
 from typing import List, Dict, Any, TypedDict, Annotated, Sequence, Optional
@@ -105,7 +104,7 @@ class MCPRAGTool(BaseTool):
         """Async version - not implemented for this example."""
         return self._run(query, **kwargs)
 
-def create_mcp_rag_tools(mcp_server_url: str = "http://localhost:8000") -> List[BaseTool]:
+def create_mcp_rag_tools(mcp_server_url: str = "http://localhost:8000/mcp") -> List[BaseTool]:
     """Create MCP RAG tools for different search types."""
     tools = []
     
@@ -206,53 +205,17 @@ def check_mcp_server_status(mcp_server_url: str) -> bool:
     except:
         return False
 
-def start_mcp_server(rag_server_path: str = None) -> subprocess.Popen:
-    """Start the RAG MCP server if it's not running."""
-    if rag_server_path is None:
-        # Default path relative to current script
-        rag_server_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "RAG",
-            "rag_mcp_server.py"
-        )
-    
-    print(f"Starting RAG MCP server: {rag_server_path}")
-    
-    try:
-        # Start the server process
-        process = subprocess.Popen(
-            [sys.executable, rag_server_path],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        
-        # Wait a bit for the server to start
-        time.sleep(3)
-        
-        # Check if it's running
-        if check_mcp_server_status("http://localhost:8000"):
-            print("RAG MCP server started successfully!")
-            return process
-        else:
-            print("RAG MCP server failed to start properly.")
-            return None
-            
-    except Exception as e:
-        print(f"Error starting RAG MCP server: {e}")
-        return None
-
 def create_agent_graph(llm_provider="mistral", model_name=None, temperature=0.2, 
-                      mcp_server_url="http://localhost:8000", auto_start_server=True):
+                      mcp_server_url="http://localhost:8000"):
     """Create a LangGraph-based ReAct agent with MCP RAG capabilities."""
     
-    # Check if MCP server is running, start it if needed
-    if auto_start_server and not check_mcp_server_status(mcp_server_url):
-        print("RAG MCP server not detected. Starting it...")
-        server_process = start_mcp_server()
-        if not server_process:
-            print("Failed to start RAG MCP server. Please start it manually.")
-            return None
+    # Check if MCP server is running (do not start it)
+    if not check_mcp_server_status(mcp_server_url):
+        print(f"Warning: RAG MCP server at {mcp_server_url} is not available.")
+        print("Please ensure the RAG MCP server is running before using clinical trials tools.")
+        print("The agent will still work with internet search tools only.")
+    else:
+        print(f"RAG MCP server at {mcp_server_url} is available.")
     
     # Get LLM
     llm = get_llm_model(provider=llm_provider, model_name=model_name, temperature=temperature)
@@ -496,17 +459,15 @@ Provide a complete answer that integrates both sources, clearly citing where eac
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Clinical Trials ReAct Agent with MCP RAG")
-    parser.add_argument("--llm", default="mistral", 
-                      choices=["openai", "anthropic", "huggingface", "mistral", "gemini"],
+    parser.add_argument("--llm", default="deepseek", 
+                      choices=["openai", "anthropic", "huggingface", "mistral", "gemini","deepseek"],
                       help="LLM provider to use")
-    parser.add_argument("--model", default="mistral-large-latest", 
+    parser.add_argument("--model", default="deepseek-chat", 
                       help="Specific model name")
     parser.add_argument("--temperature", type=float, default=0.2, 
                       help="Model temperature (0-1)")
     parser.add_argument("--mcp-server-url", default="http://localhost:8000",
                       help="URL of the RAG MCP server")
-    parser.add_argument("--no-auto-start", action="store_true",
-                      help="Don't automatically start the MCP server")
     return parser.parse_args()
 
 def main():
@@ -518,8 +479,7 @@ def main():
         llm_provider=args.llm,
         model_name=args.model,
         temperature=args.temperature,
-        mcp_server_url=args.mcp_server_url,
-        auto_start_server=not args.no_auto_start
+        mcp_server_url=args.mcp_server_url
     )
     
     if not agent_graph:
