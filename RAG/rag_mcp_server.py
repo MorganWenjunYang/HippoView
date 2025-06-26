@@ -437,14 +437,14 @@ def search_clinical_trials_graph(query: str, top_k: int = 5, search_type: str = 
 @mcp.tool()
 def search_trials_by_condition_graph(condition: str, top_k: int = 10) -> str:
     """
-    Search for clinical trials related to a specific medical condition using graph database.
+    Search for top k clinical trials with relationships to the specified condition node.
     
     Args:
         condition: The medical condition or disease name
         top_k: Number of results to return (default: 10, max: 20)
     
     Returns:
-        JSON string containing trials related to the condition
+        JSON string containing trials with their relationships to the condition
     """
     try:
         if not initialize_graph_connection():
@@ -459,32 +459,93 @@ def search_trials_by_condition_graph(condition: str, top_k: int = 10) -> str:
         elif top_k < 1:
             top_k = 1
         
+        # Enhanced query to find trials with explicit relationships to condition nodes
         cypher_query = """
-        MATCH (t:ClinicalTrial)
-        WHERE toLower(t.condition) CONTAINS toLower($condition)
-        RETURN t.nct_id as nct_id,
+        MATCH (t:ClinicalTrial)-[r1:STUDY_HAS_CONDITION]-(c:Condition)
+        WHERE toLower(c.name) CONTAINS toLower($condition) 
+        RETURN t.id as nct_id,
                t.title as title,
                t.brief_summary as brief_summary,
+               t.detailed_description as detailed_description,
                t.condition as condition,
                t.intervention_name as intervention_name,
+               t.intervention_description as intervention_description,
                t.phase as phase,
                t.status as status,
-               t.enrollment as enrollment
-        ORDER BY t.enrollment DESC
+               t.enrollment as enrollment,
+               t.start_date as start_date,
+               t.completion_date as completion_date,
+               t.primary_outcome as primary_outcome,
+               t.secondary_outcome as secondary_outcome
         LIMIT $limit
         """
         
         parameters = {"condition": condition, "limit": top_k}
         raw_results = graph_db.execute_query(cypher_query, parameters)
-        results = format_search_results(raw_results)
+        
+        # Enhanced result formatting with relationship information
+        enhanced_results = []
+        for i, result in enumerate(raw_results):
+            enhanced_result = {
+                "rank": i + 1,
+                "nct_id": result.get("nct_id", ""),
+                "title": result.get("title", ""),
+                "brief_summary": result.get("brief_summary", ""),
+                "detailed_description": result.get("detailed_description", ""),
+                "condition": result.get("condition", ""),
+                "intervention_name": result.get("intervention_name", ""),
+                "intervention_description": result.get("intervention_description", ""),
+                "phase": result.get("phase", ""),
+                "status": result.get("status", ""),
+                "enrollment": result.get("enrollment", ""),
+                "start_date": result.get("start_date", ""),
+                "completion_date": result.get("completion_date", ""),
+                "primary_outcome": result.get("primary_outcome", ""),
+                "secondary_outcome": result.get("secondary_outcome", ""),
+                "relevance_score": result.get("relevance_score", 1),
+                "relationship_info": {
+                    "condition_node_name": result.get("condition_node_name"),
+                    "relationship_type": result.get("relationship_type"),
+                    "has_explicit_relationship": result.get("condition_node_name") is not None
+                },
+                "content": format_trial_content(result),
+                "metadata": {
+                    "search_condition": condition,
+                    "nct_id": result.get("nct_id", ""),
+                    "phase": result.get("phase", ""),
+                    "status": result.get("status", ""),
+                    "relevance_score": result.get("relevance_score", 1)
+                }
+            }
+            enhanced_results.append(enhanced_result)
+        
+        # Get additional statistics about condition relationships
+        stats_query = """
+        MATCH (c:Condition)
+        WHERE toLower(c.name) CONTAINS toLower($condition) 
+           OR toLower(c.condition) CONTAINS toLower($condition)
+        OPTIONAL MATCH (c)-[r]-(t:ClinicalTrial)
+        RETURN c.name as condition_name, 
+               count(DISTINCT r) as relationship_count,
+               count(DISTINCT t) as connected_trials,
+               collect(DISTINCT type(r)) as relationship_types
+        """
+        
+        stats_results = graph_db.execute_query(stats_query, {"condition": condition})
         
         response = {
             "success": True,
             "condition": condition,
             "search_method": "graph_database",
-            "search_type": "condition",
-            "num_results": len(results),
-            "trials": results
+            "search_type": "condition_with_relationships",
+            "num_results": len(enhanced_results),
+            "trials": enhanced_results,
+            "condition_statistics": {
+                "total_trials_found": len(enhanced_results),
+                "trials_with_explicit_relationships": len([r for r in enhanced_results if r["relationship_info"]["has_explicit_relationship"]]),
+                "condition_nodes_found": stats_results if stats_results else [],
+                "search_strategy": "Combined relationship and text-based matching"
+            }
         }
         
         return json.dumps(response, indent=2)
@@ -523,18 +584,22 @@ def search_trials_by_intervention_graph(intervention: str, top_k: int = 10) -> s
             top_k = 1
         
         cypher_query = """
-        MATCH (t:ClinicalTrial)
-        WHERE toLower(t.intervention_name) CONTAINS toLower($intervention)
-           OR toLower(t.intervention_description) CONTAINS toLower($intervention)
-        RETURN t.nct_id as nct_id,
+        MATCH (t:ClinicalTrial)-[r1:Study_has_intervention]-(i:Intervention)
+        WHERE toLower(i.name) CONTAINS toLower($intervention) 
+        RETURN t.id as nct_id,
                t.title as title,
                t.brief_summary as brief_summary,
+               t.detailed_description as detailed_description,
+               t.condition as condition,
                t.intervention_name as intervention_name,
                t.intervention_description as intervention_description,
                t.phase as phase,
                t.status as status,
-               t.condition as condition
-        ORDER BY t.phase DESC
+               t.enrollment as enrollment,
+               t.start_date as start_date,
+               t.completion_date as completion_date,
+               t.primary_outcome as primary_outcome,
+               t.secondary_outcome as secondary_outcome
         LIMIT $limit
         """
         
@@ -581,8 +646,8 @@ def get_trial_by_nct_id_graph(nct_id: str) -> str:
             })
         
         cypher_query = """
-        MATCH (t:ClinicalTrial {nct_id: $nct_id})
-        RETURN t.nct_id as nct_id,
+        MATCH (t:ClinicalTrial {id: $nct_id})
+        RETURN t.id as nct_id,
                t.title as title,
                t.brief_summary as brief_summary,
                t.detailed_description as detailed_description,
@@ -870,7 +935,7 @@ def main():
     logger.info("  Graph-based: search_clinical_trials_graph, get_trial_answer_graph, get_trial_by_nct_id_graph, search_trials_by_condition_graph, search_trials_by_intervention_graph") 
     logger.info("  System: get_rag_system_status, get_database_stats")
     
-    mcp.run(transport="http", host="127.0.0.1", port=8000, path="/mcp")
+    mcp.run(transport="streamable-http", host="127.0.0.1", port=8000, path="/mcp")
 
 if __name__ == "__main__":
     main() 

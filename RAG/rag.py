@@ -88,7 +88,7 @@ class RAGSystem:
             self.retriever = setup_retriever(self.vectorstore, embedding_provider=self.embedding_provider)
             
             self.initialized = True
-            logger.info("RAG system initialized successfully")
+            logger.info(f"RAG system initialized successfully at {self.vectorstore_config.es_url}")
             return True
             
         except Exception as e:
@@ -122,7 +122,7 @@ class RAGSystem:
             logger.error(f"Error during search: {e}")
             raise e
     
-    def generate_answer(self, query: str, context_docs: List[Dict], llm_provider="mistral", model_name=None):
+    def generate_answer(self, query: str, context_docs: List[Dict], llm_provider="deepseek", model_name='deepseek-chat'):
         """Generate an answer using the retrieved context and an LLM"""
         try:
             # Get LLM
@@ -244,7 +244,8 @@ def test_rag_system():
                 answer = rag.generate_answer(
                     query=sample_question,
                     context_docs=context_docs,
-                    llm_provider="mistral"
+                    llm_provider="deepseek",
+                    model_name='deepseek-chat'
                 )
                 
                 print("   ✅ Answer generated successfully")
@@ -324,13 +325,14 @@ def test_rag_system_quick():
             print("✅ RAG System initialized")
             
             # Quick search test
-            results = rag.search("diabetes", top_k=2)
+            results = rag.search("What are some clinical trials for diabetes treatment?", top_k=2)
             print(f"✅ Search test: found {len(results)} results")
             
             # Quick answer test if results found
             if results:
-                answer = rag.generate_answer("What is diabetes?", results[:2])
+                answer = rag.generate_answer("What are some clinical trials for diabetes treatment?", results[:2])
                 print(f"✅ Answer generated: {len(answer)} characters")
+                print(f"✅ Answer: {answer}")
             
             print("🎯 Quick test PASSED")
             return True
@@ -348,7 +350,7 @@ if __name__ == "__main__":
     print("Use test_rag_system_quick() for faster testing")
     print()
     
-    success = test_rag_system()
+    success = test_rag_system_quick()
     
     if success:
         print("\n🎉 All tests passed! RAG system is working correctly.")

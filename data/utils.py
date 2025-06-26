@@ -134,9 +134,3 @@ def fetch_documents_by_sponsor_name(sponsor_name, collection_name="trialgpt_tria
     json_docs = [dumps(doc, indent=2) for doc in cursor]
     return json_docs
 
-# NEO4J DB
-
-# def connect_to_neo4j():
-#     driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PWD))
-#     return driver
-

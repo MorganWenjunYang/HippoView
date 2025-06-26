@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ReAct_LG_with_MCP.py - ReAct agent implementation using LangGraph with MCP RAG tool
+ReAct_LG_with_MCP.py - ReAct agent using Official LangChain MCP Adapters
 
 This version uses an external RAG MCP server as a tool instead of built-in RAG functionality.
 The agent only checks MCP server availability and does not start it (for docker-compose deployment).
@@ -9,10 +9,13 @@ The agent only checks MCP server availability and does not start it (for docker-
 import os
 import sys
 import json
-import requests
+import asyncio
 from typing import List, Dict, Any, TypedDict, Annotated, Sequence, Optional
 import argparse
 from pydantic import BaseModel, Field
+
+# Official LangChain MCP Adapters - THE SOLUTION!
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
 # LangGraph imports
 from langgraph.graph import StateGraph, END
@@ -31,7 +34,7 @@ from langchain_community.utilities import WikipediaAPIWrapper, ArxivAPIWrapper
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import only LLM functionality from RAG
-from RAG.rag_utils import get_llm_model
+from llm_utils import get_llm_model
 
 # Define the graph state
 class AgentState(TypedDict):
@@ -49,179 +52,175 @@ class AgentState(TypedDict):
     # Flag to indicate if all searches have been completed
     all_searches_completed: bool
 
-class MCPRAGTool(BaseTool):
-    """Custom tool that communicates with the RAG MCP server."""
+# MCPRAGTool class removed - now using direct tool exposure for better LLM decision making
+
+async def create_mcp_rag_tools(mcp_server_url: str = "http://127.0.0.1:8000/mcp") -> List[BaseTool]:
+    """
+    Create MCP RAG tools using Official LangChain MCP Adapters.
     
-    name: str = "ClinicalTrialsRAG"
-    description: str = "Search for clinical trials information using advanced RAG capabilities. Use this for questions about specific clinical trials, medical treatments, patient criteria, or trial outcomes."
-    mcp_server_url: str = "http://localhost:8000"  # Default MCP server URL
-    
-    def __init__(self, mcp_server_url: str = "http://localhost:8000", **kwargs):
-        super().__init__(**kwargs)
-        self.mcp_server_url = mcp_server_url
+    """
+    try:
+        # Create MCP client using official adapter
+        # Note: HTTP transport is an alias for streamable_http in the official adapter
+        client = MultiServerMCPClient({
+            "clinical_trials_rag": {
+                "url": mcp_server_url,
+                "transport": "streamable_http"  # Your server supports this via HTTP alias
+            }
+        })
         
-    def _run(self, query: str, search_type: str = "search", **kwargs) -> str:
-        """Execute the tool by communicating with the MCP server."""
-        try:
-            if search_type == "answer":
-                # Use get_trial_answer for comprehensive answers
-                payload = {
-                    "name": "get_trial_answer",
-                    "arguments": {
-                        "query": query,
-                        "top_k": kwargs.get("top_k", 5),
-                        "llm_provider": kwargs.get("llm_provider", "mistral")
-                    }
-                }
-            else:
-                # Use search_clinical_trials for document retrieval
-                payload = {
-                    "name": "search_clinical_trials", 
-                    "arguments": {
-                        "query": query,
-                        "top_k": kwargs.get("top_k", 5)
-                    }
-                }
-            
-            response = requests.post(
-                f"{self.mcp_server_url}/tools",
-                json=payload,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return json.dumps(result, indent=2)
-            else:
-                return f"Error: MCP server responded with status {response.status_code}: {response.text}"
-                
-        except requests.exceptions.RequestException as e:
-            return f"Error communicating with RAG MCP server: {str(e)}"
-        except Exception as e:
-            return f"Unexpected error: {str(e)}"
-
-    def _arun(self, query: str, **kwargs) -> str:
-        """Async version - not implemented for this example."""
-        return self._run(query, **kwargs)
-
-def create_mcp_rag_tools(mcp_server_url: str = "http://localhost:8000/mcp") -> List[BaseTool]:
-    """Create MCP RAG tools for different search types."""
-    tools = []
-    
-    # Main RAG search tool
-    main_rag_tool = MCPRAGTool(
-        mcp_server_url=mcp_server_url,
-        name="ClinicalTrialsRAG",
-        description="Search clinical trials database using advanced semantic search. Returns relevant trial documents and metadata."
-    )
-    tools.append(main_rag_tool)
-    
-    # RAG answer tool
-    answer_rag_tool = Tool(
-        name="ClinicalTrialsAnswer",
-        func=lambda query: main_rag_tool._run(query, search_type="answer"),
-        description="Get comprehensive AI-generated answers about clinical trials using RAG. Use this when you need detailed explanations rather than just document retrieval."
-    )
-    tools.append(answer_rag_tool)
-    
-    # Specific NCT ID lookup
-    nct_lookup_tool = Tool(
-        name="NCTLookup",
-        func=lambda nct_id: requests.post(
-            f"{mcp_server_url}/tools",
-            json={"name": "get_trial_by_nct_id", "arguments": {"nct_id": nct_id}},
-            timeout=30
-        ).json() if requests.post(
-            f"{mcp_server_url}/tools",
-            json={"name": "get_trial_by_nct_id", "arguments": {"nct_id": nct_id}},
-            timeout=30
-        ).status_code == 200 else f"Error looking up NCT ID {nct_id}",
-        description="Look up specific clinical trial by NCT ID (e.g., NCT12345678). Use this when you have a specific trial identifier."
-    )
-    tools.append(nct_lookup_tool)
-    
-    return tools
+        # Get tools using official method - NO CUSTOM WRAPPERS!
+        print("🚀 Loading tools using Official LangChain MCP Adapters...")
+        tools = await client.get_tools()
+        
+        print(f"✅ Successfully loaded {len(tools)} MCP tools using official adapter!")
+        for i, tool in enumerate(tools, 1):
+            print(f"  {i:2d}. {tool.name}")
+        
+        return tools
+        
+    except Exception as e:
+        print(f"❌ Failed to load MCP tools using official adapter: {e}")
+        print("⚠️  Falling back to empty tools list. Make sure MCP server is running.")
+        return []
 
 def create_search_tools() -> List[BaseTool]:
     """Create a set of internet search tools."""
     tools = []
     
-    # Add DuckDuckGo Search
+    # Add DuckDuckGo Search with error handling
     try:
         ddg_search = DuckDuckGoSearchRun()
-        tools.append(
-            Tool(
-                name="DuckDuckGoSearch",
-                func=ddg_search.run,
-                description="Search the web for current information, news, or recent events. Use this for information not available in the clinical trials database."
-            )
-        )
-        print("Added DuckDuckGo search tool")
+        
+        def safe_duckduckgo_search(query: str) -> str:
+            """DuckDuckGo search with error handling for network and API issues."""
+            try:
+                result = ddg_search.run(query)
+                return result
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "tls handshake failed" in error_msg or "connection reset" in error_msg:
+                    return f"DuckDuckGo search temporarily unavailable due to network connectivity issues. Query: {query}"
+                elif "client error" in error_msg or "connect" in error_msg:
+                    return f"DuckDuckGo search service temporarily unreachable. Query: {query}"
+                elif "timeout" in error_msg:
+                    return f"DuckDuckGo search timed out. Query: {query}"
+                elif "rate limit" in error_msg or "too many requests" in error_msg:
+                    return f"DuckDuckGo search rate limited. Please try again later. Query: {query}"
+                else:
+                    return f"DuckDuckGo search error for '{query}': {str(e)}"
+        
+        # tools.append(
+        #     Tool(
+        #         name="DuckDuckGoSearch",
+        #         func=safe_duckduckgo_search,
+        #         description="Search the web for current information, news, or recent events. Use this for information not available in the clinical trials database."
+        #     )
+        # )
+        # print("Added DuckDuckGo search tool with error handling")
     except ImportError:
         print("Could not import DuckDuckGo search.")
     
-    # Add Wikipedia Search
+    # Add Wikipedia Search with error handling
     try:
-        wikipedia = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
+        wikipedia_api = WikipediaAPIWrapper()
+        wikipedia = WikipediaQueryRun(api_wrapper=wikipedia_api)
+        
+        def safe_wikipedia_search(query: str) -> str:
+            """Wikipedia search with error handling for JSON decode issues."""
+            try:
+                result = wikipedia.run(query)
+                return result
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "json" in error_msg or "expecting value" in error_msg:
+                    return f"Wikipedia search temporarily unavailable (API issue). Query: {query}"
+                elif "disambiguation" in error_msg:
+                    return f"Wikipedia disambiguation found for '{query}'. Please be more specific."
+                elif "page" in error_msg and "does not exist" in error_msg:
+                    return f"No Wikipedia page found for '{query}'."
+                else:
+                    return f"Wikipedia search error for '{query}': {str(e)}"
+        
         tools.append(
             Tool(
                 name="WikipediaSearch",
-                func=wikipedia.run,
+                func=safe_wikipedia_search,
                 description="Search Wikipedia for factual information and general medical knowledge."
             )
         )
-        print("Added Wikipedia search tool")
+        print("Added Wikipedia search tool with error handling")
     except ImportError:
         print("Could not import Wikipedia tool.")
     
-    # Add ArXiv Search for scientific papers
+    # Add ArXiv Search for scientific papers with error handling
     try:
-        arxiv = ArxivQueryRun(api_wrapper=ArxivAPIWrapper())
+        arxiv_api = ArxivAPIWrapper()
+        arxiv = ArxivQueryRun(api_wrapper=arxiv_api)
+        
+        def safe_arxiv_search(query: str) -> str:
+            """ArXiv search with error handling for network and API issues."""
+            try:
+                result = arxiv.run(query)
+                return result
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "network" in error_msg or "connection" in error_msg or "timeout" in error_msg:
+                    return f"ArXiv search temporarily unavailable due to network issues. Query: {query}"
+                elif "no papers found" in error_msg or "no results" in error_msg:
+                    return f"No ArXiv papers found for '{query}'. Try broader search terms."
+                else:
+                    return f"ArXiv search error for '{query}': {str(e)}"
+        
         tools.append(
             Tool(
                 name="ArXivSearch",
-                func=arxiv.run,
+                func=safe_arxiv_search,
                 description="Search scientific papers on ArXiv for research about clinical trials and medical treatments."
             )
         )
-        print("Added ArXiv search tool")
+        print("Added ArXiv search tool with error handling")
     except ImportError:
         print("Could not import ArXiv tool.")
         
     return tools
 
-def check_mcp_server_status(mcp_server_url: str) -> bool:
-    """Check if the MCP RAG server is running."""
+async def check_mcp_server_status(mcp_server_url: str) -> bool:
+    """Check if the MCP RAG server is running using official adapter."""
     try:
-        response = requests.post(
-            f"{mcp_server_url}/tools",
-            json={"name": "get_rag_system_status", "arguments": {}},
-            timeout=5
-        )
-        if response.status_code == 200:
-            result = response.json()
-            return result.get("success", False)
-        return False
-    except:
+        # Use official adapter for connection test
+        client = MultiServerMCPClient({
+            "clinical_trials_rag": {
+                "url": mcp_server_url,
+                "transport": "streamable_http"
+            }
+        })
+        
+        # Try to get tools list as a connection test
+        tools = await client.get_tools()
+        return len(tools) > 0
+        
+    except Exception:
         return False
 
-def create_agent_graph(llm_provider="mistral", model_name=None, temperature=0.2, 
-                      mcp_server_url="http://localhost:8000"):
-    """Create a LangGraph-based ReAct agent with MCP RAG capabilities."""
+async def create_agent_graph(llm_provider="mistral", model_name=None, temperature=0.2, 
+                      mcp_server_url="http://127.0.0.1:8000/mcp"):
+    """Create a LangGraph-based ReAct agent with Official MCP Adapters."""
     
-    # Check if MCP server is running (do not start it)
-    if not check_mcp_server_status(mcp_server_url):
+    # Check if MCP server is running using official adapter
+    server_available = await check_mcp_server_status(mcp_server_url)
+    if not server_available:
         print(f"Warning: RAG MCP server at {mcp_server_url} is not available.")
         print("Please ensure the RAG MCP server is running before using clinical trials tools.")
         print("The agent will still work with internet search tools only.")
     else:
-        print(f"RAG MCP server at {mcp_server_url} is available.")
+        print(f"✅ RAG MCP server at {mcp_server_url} is available (verified with official adapter)")
     
     # Get LLM
     llm = get_llm_model(provider=llm_provider, model_name=model_name, temperature=temperature)
     
-    # Create tools
-    rag_tools = create_mcp_rag_tools(mcp_server_url)
+    # Create tools using official adapter
+    rag_tools = await create_mcp_rag_tools(mcp_server_url)
     internet_tools = create_search_tools()
     all_tools = rag_tools + internet_tools
     
@@ -290,8 +289,10 @@ Provide a complete answer that integrates both sources, clearly citing where eac
             "all_searches_completed": False
         }
     
-    def clinical_search(state: AgentState) -> Dict:
+    async def clinical_search(state: AgentState) -> Dict:
         """Search using RAG MCP tools."""
+        print("\n📊 Phase 1: Searching Clinical Trials Database...")
+        
         prompt = ChatPromptTemplate.from_messages([
             SystemMessage(content=clinical_search_prompt),
             MessagesPlaceholder(variable_name="messages"),
@@ -310,19 +311,48 @@ Provide a complete answer that integrates both sources, clearly citing where eac
             for tool_call in response.tool_calls:
                 for tool in rag_tools:
                     if tool_call["name"] == tool.name:
-                        result = tool.invoke(tool_call["args"])
-                        clinical_results.append(f"{tool.name}: {result}")
-                        
-                        tool_msg = ToolMessage(
-                            content=str(result),
-                            name=tool.name,
-                            tool_call_id=tool_call["id"]
-                        )
-                        return {
-                            "messages": [response, tool_msg],
-                            "clinical_context": clinical_results,
-                            "current_task": "internet_search"
-                        }
+                        try:
+                            # Show user which tool is being called
+                            print(f"🔍 Calling Clinical Database Tool: {tool.name}")
+                            print(f"   └── Arguments: {tool_call['args']}")
+                            
+                            # Check if tool is async by checking for ainvoke method
+                            if hasattr(tool, 'ainvoke'):
+                                result = await tool.ainvoke(tool_call["args"])
+                            else:
+                                result = tool.invoke(tool_call["args"])
+                            
+                            print(f"   ✅ Tool completed successfully")
+                            clinical_results.append(f"{tool.name}: {result}")
+                            
+                            tool_msg = ToolMessage(
+                                content=str(result),
+                                name=tool.name,
+                                tool_call_id=tool_call["id"]
+                            )
+                            return {
+                                "messages": [response, tool_msg],
+                                "clinical_context": clinical_results,
+                                "current_task": "internet_search"
+                            }
+                        except Exception as e:
+                            error_result = f"Error using {tool.name}: {str(e)}"
+                            clinical_results.append(f"{tool.name}: {error_result}")
+                            print(f"   ❌ Clinical tool error: {error_result}")
+                            
+                            tool_msg = ToolMessage(
+                                content=error_result,
+                                name=tool.name,
+                                tool_call_id=tool_call["id"]
+                            )
+                            return {
+                                "messages": [response, tool_msg],
+                                "clinical_context": clinical_results,
+                                "current_task": "internet_search"
+                            }
+        
+        if not clinical_results:
+            print("   ℹ️  No clinical database tools were called for this query")
         
         return {
             "messages": [response],
@@ -330,8 +360,10 @@ Provide a complete answer that integrates both sources, clearly citing where eac
             "current_task": "internet_search"
         }
     
-    def internet_search(state: AgentState) -> Dict:
+    async def internet_search(state: AgentState) -> Dict:
         """Search the internet for supplementary information."""
+        print("\n🌐 Phase 2: Searching Internet for Additional Information...")
+        
         internet_tool_names = ", ".join([tool.name for tool in internet_tools])
         
         prompt = ChatPromptTemplate.from_messages([
@@ -356,20 +388,50 @@ Provide a complete answer that integrates both sources, clearly citing where eac
             for tool_call in response.tool_calls:
                 for tool in internet_tools:
                     if tool_call["name"] == tool.name:
-                        result = tool.invoke(tool_call["args"])
-                        internet_results.append(f"{tool.name}: {result}")
-                        
-                        tool_msg = ToolMessage(
-                            content=str(result),
-                            name=tool.name,
-                            tool_call_id=tool_call["id"]
-                        )
-                        return {
-                            "messages": [response, tool_msg],
-                            "internet_context": state["internet_context"] + internet_results,
-                            "current_task": "final_answer",
-                            "all_searches_completed": True
-                        }
+                        try:
+                            # Show user which tool is being called
+                            print(f"🌐 Calling Internet Search Tool: {tool.name}")
+                            print(f"   └── Arguments: {tool_call['args']}")
+                            
+                            # Check if tool is async by checking for ainvoke method
+                            if hasattr(tool, 'ainvoke'):
+                                result = await tool.ainvoke(tool_call["args"])
+                            else:
+                                result = tool.invoke(tool_call["args"])
+                            
+                            print(f"   ✅ Tool completed successfully")
+                            internet_results.append(f"{tool.name}: {result}")
+                            
+                            tool_msg = ToolMessage(
+                                content=str(result),
+                                name=tool.name,
+                                tool_call_id=tool_call["id"]
+                            )
+                            return {
+                                "messages": [response, tool_msg],
+                                "internet_context": state["internet_context"] + internet_results,
+                                "current_task": "final_answer",
+                                "all_searches_completed": True
+                            }
+                        except Exception as e:
+                            error_result = f"Error using {tool.name}: {str(e)}"
+                            internet_results.append(f"{tool.name}: {error_result}")
+                            print(f"   ❌ Internet tool error: {error_result}")
+                            
+                            tool_msg = ToolMessage(
+                                content=error_result,
+                                name=tool.name,
+                                tool_call_id=tool_call["id"]
+                            )
+                            return {
+                                "messages": [response, tool_msg],
+                                "internet_context": state["internet_context"] + internet_results,
+                                "current_task": "final_answer",
+                                "all_searches_completed": True
+                            }
+        
+        if not internet_results:
+            print("   ℹ️  No internet search tools were called for this query")
         
         return {
             "messages": [response],
@@ -380,6 +442,8 @@ Provide a complete answer that integrates both sources, clearly citing where eac
     
     def formulate_final_answer(state: AgentState) -> Dict:
         """Synthesize information to generate final answer."""
+        print("\n🤖 Phase 3: Synthesizing Information and Generating Final Answer...")
+        
         prompt = ChatPromptTemplate.from_messages([
             SystemMessage(content=final_answer_prompt.format(
                 clinical_context="\n".join(state["clinical_context"]) if state["clinical_context"] else "No clinical trial information found.",
@@ -466,16 +530,16 @@ def parse_arguments():
                       help="Specific model name")
     parser.add_argument("--temperature", type=float, default=0.2, 
                       help="Model temperature (0-1)")
-    parser.add_argument("--mcp-server-url", default="http://localhost:8000",
+    parser.add_argument("--mcp-server-url", default="http://127.0.0.1:8000/mcp",
                       help="URL of the RAG MCP server")
     return parser.parse_args()
 
-def main():
-    """Main function to run the ReAct agent with MCP RAG."""
+async def main():
+    """Main function to run the ReAct agent with Official MCP Adapters."""
     args = parse_arguments()
     
-    # Create the agent graph
-    agent_graph = create_agent_graph(
+    # Create the agent graph using official adapters
+    agent_graph = await create_agent_graph(
         llm_provider=args.llm,
         model_name=args.model,
         temperature=args.temperature,
@@ -510,7 +574,7 @@ def main():
             
             print("\nProcessing your question...")
             
-            final_state = agent_graph.invoke(
+            final_state = await agent_graph.ainvoke(
                 input_state,
                 config={"configurable": {"thread_id": "default_thread"}}
             )
@@ -524,4 +588,4 @@ def main():
             traceback.print_exc()
 
 if __name__ == "__main__":
-    main() 
+    asyncio.run(main()) 
