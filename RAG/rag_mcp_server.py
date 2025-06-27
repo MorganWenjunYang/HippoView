@@ -31,7 +31,17 @@ from RAG.graphrag import GraphDB, DEFAULT_GRAPHDB_CONFIG
 from llm_utils import get_llm_model
 
 # Initialize both systems
-vector_rag_system = RAGSystem()
+from RAG.rag_utils import VectorStoreConfig
+
+VECTORSTORE_CONFIG = VectorStoreConfig(
+    vectorstore_type="elasticsearch",
+    embedding_provider="huggingface",
+    persist=True,
+    es_url="http://localhost:9200",
+    index_name="copd"
+)
+
+vector_rag_system = RAGSystem(embedding_provider="huggingface", vectorstore_config=VECTORSTORE_CONFIG)
 graph_db = GraphDB(DEFAULT_GRAPHDB_CONFIG)
 
 # Create the FastMCP server

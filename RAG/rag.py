@@ -14,12 +14,9 @@ from typing import List, Dict, Any, Optional
 import logging
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from rag_utils import VectorStoreConfig
-
-
 # Add parent directory to sys.path to import RAG modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+from RAG.rag_utils import VectorStoreConfig
 from llm_utils import get_llm_model
 try:
     from RAG.rag_utils import (
@@ -40,6 +37,15 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("rag-mcp-server")
 
+# Default vectorstore config
+DEFAULT_VECTORSTORE_CONFIG = VectorStoreConfig(
+    vectorstore_type="elasticsearch",
+    embedding_provider="huggingface",
+    persist=True,
+    es_url="http://localhost:9200",
+    index_name="clinical_trial"
+)
+
 class RAGSystem:
     def __init__(self, embedding_provider="huggingface", vectorstore_config: VectorStoreConfig = None):
         self.embedding_provider = embedding_provider
@@ -47,13 +53,7 @@ class RAGSystem:
         self.retriever = None
         self.initialized = False
         if vectorstore_config is None:
-            self.vectorstore_config = VectorStoreConfig(
-                vectorstore_type="elasticsearch",
-                embedding_provider=self.embedding_provider,
-                persist=True,
-                es_url="http://localhost:9200",
-                index_name="clinical_trial"
-            )
+            self.vectorstore_config = DEFAULT_VECTORSTORE_CONFIG
         else:
             self.vectorstore_config = vectorstore_config
         
@@ -88,7 +88,7 @@ class RAGSystem:
             self.retriever = setup_retriever(self.vectorstore, embedding_provider=self.embedding_provider)
             
             self.initialized = True
-            logger.info(f"RAG system initialized successfully at {self.vectorstore_config.es_url}")
+            logger.info(f"RAG system initialized successfully at {self.vectorstore_config.kwargs.get('es_url', 'http://localhost:9200')}")
             return True
             
         except Exception as e:
