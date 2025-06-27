@@ -221,3 +221,4 @@ yarg==0.1.9
 yarl==1.19.0
 zipp==3.21.0
 zstandard==0.23.0
+streamlit==1.41.1
