@@ -1,0 +1,96 @@
+# Example Configuration: COPD Interventional Trials
+# This configuration targets interventional clinical trials for COPD
+
+api_filters:
+  condition: "Gastric Cancer"
+  
+  advanced_filters:
+    study_type: "INTERVENTIONAL"
+    recruitment_status: null
+    age_group: "ADULT"
+    gender: null
+    study_phase: null
+    
+  location_filters:
+    countries: []
+    states: []
+    cities: []
+    
+  date_filters:
+    start_date_from: "2010-01-01"  # Only trials started after 2010
+    start_date_to: null
+    completion_date_from: null
+    completion_date_to: null
+    
+  sponsor_filters:
+    lead_sponsor_types: ["INDUSTRY", "FED"]  # Focus on industry and federal sponsors
+    exclude_sponsors: []
+    include_sponsors: []
+
+post_filters:
+  requirements:
+    min_enrollment: 50        # Minimum 50 participants
+    max_enrollment: null
+    require_brief_summary: true
+    require_outcomes: true    # Must have outcome measures
+    require_interventions: true
+    
+  content_filters:
+    required_keywords: []
+    excluded_keywords: ["pediatric", "children"]  # Exclude pediatric studies
+    
+    intervention_types:
+      include: ["Drug", "Device", "Procedure"]
+      exclude: ["Behavioral"]
+    
+    condition_filters:
+      include: []
+      exclude: []
+
+sampling:
+  max_trials: 1000  # Limit to 1000 trials for faster processing
+  sampling_strategy: "recent"
+  trials_per_condition: null
+  random_seed: 42
+
+data_source:
+  primary: "api"
+  fallback: null
+  
+  api_config:
+    base_url: "https://clinicaltrials.gov/api/v2"
+    max_workers: 6
+    chunk_size: 100
+    request_timeout: 30
+    retry_attempts: 3
+    retry_delay: 1
+
+# Vector database is populated from MongoDB separately
+# No vector DB configuration needed here
+
+knowledge_graph:
+  include_nodes:
+    - "study"
+    - "condition" 
+    - "intervention"
+    - "outcome"
+    - "sponsor"
+    
+  include_edges:
+    - "study_has_condition"
+    - "study_has_intervention" 
+    - "study_has_outcome"
+    - "sponsor_has_study"
+    
+  node_requirements:
+    min_study_connections: 1
+    min_condition_connections: 2
+    min_intervention_connections: 2
+    min_outcome_connections: 1
+    min_sponsor_connections: 1
+
+caching:
+  enable_api_cache: true
+  cache_dir: "./cache"
+  cache_expiry_hours: 24
+  enable_parallel: true 

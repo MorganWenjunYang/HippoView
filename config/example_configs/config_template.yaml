@@ -1,0 +1,155 @@
+# HippoView Clinical Trial Filter Configuration
+# This configuration controls what clinical trials are included in:
+# - Knowledge Graph (Neo4j)
+# - Vector Database (Elasticsearch)
+# - RAG System
+
+# =============================================================================
+# API FILTERING (ClinicalTrials.gov API)
+# =============================================================================
+api_filters:
+  # Basic query parameters
+  condition: "COPD"  # Can be null for all conditions
+  
+  # Advanced filters using ClinicalTrials.gov syntax
+  # Documentation: https://clinicaltrials.gov/api/gui/ref/syntax
+  advanced_filters:
+    study_type: "INTERVENTIONAL"  # INTERVENTIONAL, OBSERVATIONAL, EXPANDED_ACCESS
+    recruitment_status: null  # RECRUITING, COMPLETED, TERMINATED, etc.
+    age_group: null  # CHILD, ADULT, OLDER_ADULT
+    gender: null  # ALL, FEMALE, MALE
+    study_phase: null  # EARLY_PHASE1, PHASE1, PHASE2, PHASE3, PHASE4
+    
+  # Location filters
+  location_filters:
+    countries: []  # e.g., ["United States", "Canada"]
+    states: []     # e.g., ["California", "New York"] 
+    cities: []     # e.g., ["Boston", "Seattle"]
+    
+  # Date range filters
+  date_filters:
+    start_date_from: null  # YYYY-MM-DD
+    start_date_to: null    # YYYY-MM-DD
+    completion_date_from: null
+    completion_date_to: null
+    
+  # Sponsor filters
+  sponsor_filters:
+    lead_sponsor_types: []  # e.g., ["INDUSTRY", "FED", "NETWORK", "OTHER"]
+    exclude_sponsors: []    # List of sponsor names to exclude
+    include_sponsors: []    # List of sponsor names to include (if specified, only these are included)
+
+# =============================================================================
+# POST-PROCESSING FILTERS
+# =============================================================================
+post_filters:
+  # Minimum requirements for inclusion
+  requirements:
+    min_enrollment: null        # Minimum number of participants
+    max_enrollment: null        # Maximum number of participants
+    require_brief_summary: true # Require non-empty brief summary
+    require_outcomes: false     # Require at least one outcome measure
+    require_interventions: true # Require at least one intervention
+    
+  # Content filters
+  content_filters:
+    # Keywords that must be present (in title, summary, or conditions)
+    required_keywords: []
+    
+    # Keywords that exclude trials (in title, summary, or conditions)  
+    excluded_keywords: []
+    
+    # Intervention type filters
+    intervention_types:
+      include: []  # e.g., ["Drug", "Procedure", "Device"]
+      exclude: []  # e.g., ["Behavioral"]
+    
+    # Condition filters (additional to API condition filter)
+    condition_filters:
+      include: []  # Include trials with these conditions
+      exclude: []  # Exclude trials with these conditions
+
+# =============================================================================
+# SAMPLING AND LIMITS
+# =============================================================================
+sampling:
+  # Limit total number of trials processed
+  max_trials: null  # null for no limit
+  
+  # Sampling strategy if max_trials is set
+  sampling_strategy: "random"  # "random", "recent", "diverse_conditions"
+  
+  # For diverse sampling, number of trials per condition
+  trials_per_condition: null
+  
+  # Random seed for reproducible sampling
+  random_seed: 42
+
+# =============================================================================
+# DATA SOURCE CONFIGURATION
+# =============================================================================
+data_source:
+  # Primary data source: "api" or "mongodb"
+  primary: "api"
+  
+  # Fallback source if primary fails
+  fallback: null
+  
+  # API configuration
+  api_config:
+    base_url: "https://clinicaltrials.gov/api/v2"
+    max_workers: 4
+    chunk_size: 100
+    request_timeout: 30
+    retry_attempts: 3
+    retry_delay: 1  # seconds
+    
+  # MongoDB configuration (if used)
+  mongodb_config:
+    collection: "trialgpt_trials"
+    additional_filters: {}  # MongoDB query filters
+
+# =============================================================================
+# KNOWLEDGE GRAPH CONFIGURATION
+# =============================================================================
+knowledge_graph:
+  # Node types to include
+  include_nodes:
+    - "study"
+    - "condition" 
+    - "intervention"
+    - "outcome"
+    - "sponsor"
+    
+  # Edge types to include
+  include_edges:
+    - "study_has_condition"
+    - "study_has_intervention" 
+    - "study_has_outcome"
+    - "sponsor_has_study"
+    - "condition_has_intervention"
+    
+  # Minimum node requirements
+  node_requirements:
+    # Minimum number of connections for nodes to be included
+    min_study_connections: 1
+    min_condition_connections: 1
+    min_intervention_connections: 1
+    min_outcome_connections: 1
+    min_sponsor_connections: 1
+
+# =============================================================================
+# CACHING AND PERFORMANCE
+# =============================================================================
+caching:
+  # Enable caching of API results
+  enable_api_cache: true
+  
+  # Cache directory
+  cache_dir: "./cache"
+  
+  # Cache expiration in hours
+  cache_expiry_hours: 24
+  
+  # Enable parallel processing
+  enable_parallel: true 

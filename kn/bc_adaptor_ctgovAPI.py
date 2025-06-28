@@ -19,86 +19,10 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 logger.debug(f"Loading module {__name__}.")
 
 import requests
+from config.config_manager import load_trial_config
 
-QUERY_PARAMS = {
-    "format": "json",
-    "query.cond": "COPD",
-    "filter.advanced": "AREA[StudyType]INTERVENTIONAL",
-    "fields": ",".join([
-        # Identification fields
-        "NCTId",
-        "BriefTitle", 
-        "OfficialTitle",
-        # "IdentificationModule",
-        
-        # # # Status fields
-        "StatusModule",# "ProtocolSection.StatusModule.OverallStatus",
-        # "StartDate",# "ProtocolSection.StatusModule.StartDate",
-        # "CompletionDate",# "ProtocolSection.StatusModule.CompletionDate",
-        
-        # # # Design fields
-        # "StudyType",# "ProtocolSection.DesignModule.StudyType",
-        # "Phases",# "ProtocolSection.DesignModule.Phases",
-        # "EnrollmentInfo.Count",# "ProtocolSection.DesignModule.EnrollmentInfo.Count",
-        # "DesignInfo.Allocation",# "ProtocolSection.DesignModule.DesignInfo.Allocation",
-        # "DesignInfo.Masking",# "ProtocolSection.DesignModule.DesignInfo.Masking",
-        # "DesignInfo.WhoMasked",# "ProtocolSection.DesignModule.DesignInfo.WhoMasked",
-        # "DesignInfo.InterventionModel",# "ProtocolSection.DesignModule.DesignInfo.InterventionModel",
-        # "DesignInfo.PrimaryPurpose",# "ProtocolSection.DesignModule.DesignInfo.PrimaryPurpose",
-        "DesignModule",
-
-
-        # # # Description fields
-        # "BriefSummary",# "ProtocolSection.DescriptionModule.BriefSummary",
-        # "DetailedDescription",# "ProtocolSection.DescriptionModule.DetailedDescription",
-        "DescriptionModule",
-        
-        # # # Condition fields
-        # "Conditions",# "ProtocolSection.ConditionsModule.Conditions",
-        # "Keywords",# "ProtocolSection.ConditionsModule.Keywords",
-        "ConditionsModule",
-        
-        # # # Intervention fields
-        # "Interventions",# "ProtocolSection.ArmsInterventionsModule.Interventions",
-        # "InterventionType",# "ProtocolSection.ArmsInterventionsModule.Interventions.InterventionType",
-        # "InterventionName",# "ProtocolSection.ArmsInterventionsModule.Interventions.InterventionName",
-        # "Description",# "ProtocolSection.ArmsInterventionsModule.Interventions.Description",
-        "ArmsInterventionsModule",
-
-        # # # Outcome fields
-        # # "ProtocolSection.OutcomesModule.PrimaryOutcomes",
-        # # "ProtocolSection.OutcomesModule.PrimaryOutcomes.Measure",
-        # # "ProtocolSection.OutcomesModule.PrimaryOutcomes.TimeFrame",
-        # # "ProtocolSection.OutcomesModule.PrimaryOutcomes.Description",
-        # # "ProtocolSection.OutcomesModule.SecondaryOutcomes",
-        # # "ProtocolSection.OutcomesModule.SecondaryOutcomes.Measure",
-        # # "ProtocolSection.OutcomesModule.SecondaryOutcomes.TimeFrame",
-        # # "ProtocolSection.OutcomesModule.SecondaryOutcomes.Description",
-        "OutcomesModule",
-
-
-        # # # Sponsor fields
-        # # "ProtocolSection.SponsorCollaboratorsModule.LeadSponsor",
-        # # "ProtocolSection.SponsorCollaboratorsModule.LeadSponsor.Name",
-        # # "ProtocolSection.SponsorCollaboratorsModule.LeadSponsor.Class",
-        # # "ProtocolSection.SponsorCollaboratorsModule.Collaborators",
-        "SponsorCollaboratorsModule",
-        
-        # # Eligibility fields (for future reference)
-        # "ProtocolSection.EligibilityModule.EligibilityCriteria",
-        # "ProtocolSection.EligibilityModule.HealthyVolunteers",
-        # "ProtocolSection.EligibilityModule.Sex",
-        # "ProtocolSection.EligibilityModule.MinimumAge",
-        # "ProtocolSection.EligibilityModule.MaximumAge",
-        "EligibilityModule",
-        
-        # # Location fields (if needed)
-        # "ProtocolSection.ContactsLocationsModule.Locations"
-        "ContactsLocationsModule",
-    ]),
-    "pageSize": 100,
-    "countTotal": "true"
-}
+# Load default configuration
+DEFAULT_CONFIG = load_trial_config()
 
 
 class ClinicalTrialsAdapterNodeType(Enum):
@@ -190,15 +114,21 @@ class ClinicalTrialsAdapter:
         edge_types: Optional[list] = None,
         edge_fields: Optional[list] = None,
         max_workers: int = 4,
-        chunk_size: int = 25
+        chunk_size: int = 25,
+        config_path: str = None
     ):
         self._set_types_and_fields(
             node_types, node_fields, edge_types, edge_fields
         )
 
-        self.base_url = "https://clinicaltrials.gov/api/v2"
-        self.max_workers = max_workers
-        self.chunk_size = chunk_size
+        # Load configuration
+        self.config = load_trial_config(config_path) if config_path else DEFAULT_CONFIG
+        
+        # Use configuration values with fallbacks
+        api_config = self.config.data_source.api_config
+        self.base_url = api_config.get("base_url", "https://clinicaltrials.gov/api/v2")
+        self.max_workers = api_config.get("max_workers", max_workers)
+        self.chunk_size = api_config.get("chunk_size", chunk_size)
         
         # Cache studies to avoid repeated API calls
         self._studies_cache = {}
@@ -210,8 +140,8 @@ class ClinicalTrialsAdapter:
         Fetches the first page and divides the results into chunks for parallel processing
         """
         try:
-            # Make initial request to get total count and first page
-            params = QUERY_PARAMS.copy()
+            # Get query parameters from configuration
+            params = self.config.build_api_query_params()
             url = f"{self.base_url}/studies"
             response = requests.get(url, params=params)
             response.raise_for_status()
@@ -238,6 +168,10 @@ class ClinicalTrialsAdapter:
                     current_token = result.get("nextPageToken")
                     
                     # Limit the number of prefetched tokens to avoid overloading
+                    # Also check if we've reached the max trials limit
+                    max_trials = self.config.sampling.max_trials
+                    if max_trials and len(self._chunk_tokens) * self.chunk_size >= max_trials:
+                        break
                     if len(self._chunk_tokens) >= 10:
                         break
             else:
@@ -266,7 +200,7 @@ class ClinicalTrialsAdapter:
             return self._studies_cache[page_token]
             
         try:
-            params = QUERY_PARAMS.copy()
+            params = self.config.build_api_query_params()
             if page_token:
                 params["pageToken"] = page_token
                 
@@ -280,14 +214,75 @@ class ClinicalTrialsAdapter:
             result = response.json()
             studies = result.get("studies", [])
             
-            # Cache the result
-            self._studies_cache[page_token] = studies
+            # Apply post-processing filters
+            filtered_studies = []
+            for study in studies:
+                # Convert study data for filtering
+                trial_data = self._extract_trial_data_for_filtering(study)
+                if self.config.should_include_trial(trial_data):
+                    filtered_studies.append(study)
             
-            return studies
+            # Cache the result
+            self._studies_cache[page_token] = filtered_studies
+            
+            return filtered_studies
             
         except Exception as e:
             logger.error(f"Error fetching studies chunk with token {page_token}: {str(e)}")
             return []
+
+    def _extract_trial_data_for_filtering(self, study):
+        """
+        Extract trial data needed for post-processing filters.
+        
+        Args:
+            study: Raw study data from API
+            
+        Returns:
+            Dictionary with standardized trial data
+        """
+        protocol = study.get("protocolSection", {})
+        
+        # Extract basic fields
+        trial_data = {
+            "nct_id": protocol.get("identificationModule", {}).get("nctId"),
+            "brief_title": protocol.get("identificationModule", {}).get("briefTitle"),
+            "brief_summary": protocol.get("descriptionModule", {}).get("briefSummary"),
+        }
+        
+        # Extract enrollment
+        try:
+            enrollment = protocol.get("designModule", {}).get("enrollmentInfo", {}).get("count")
+            trial_data["enrollment"] = int(enrollment) if enrollment else None
+        except (ValueError, TypeError):
+            trial_data["enrollment"] = None
+        
+        # Extract conditions
+        conditions = protocol.get("conditionsModule", {}).get("conditions", [])
+        trial_data["conditions"] = conditions
+        
+        # Extract interventions
+        interventions = protocol.get("armsInterventionsModule", {}).get("interventions", [])
+        intervention_names = [i.get("name") for i in interventions if i.get("name")]
+        trial_data["interventions"] = intervention_names
+        
+        # Extract outcomes
+        outcomes_module = protocol.get("outcomesModule", {})
+        primary_outcomes = outcomes_module.get("primaryOutcomes", [])
+        secondary_outcomes = outcomes_module.get("secondaryOutcomes", [])
+        all_outcomes = primary_outcomes + secondary_outcomes
+        trial_data["outcomes"] = all_outcomes
+        
+        # Extract sponsors
+        sponsors_module = protocol.get("sponsorCollaboratorsModule", {})
+        sponsors = []
+        if sponsors_module.get("leadSponsor"):
+            sponsors.append(sponsors_module["leadSponsor"])
+        if sponsors_module.get("collaborators"):
+            sponsors.extend(sponsors_module["collaborators"])
+        trial_data["sponsors"] = sponsors
+        
+        return trial_data
 
     def _ensure_string(self, value, default="N/A"):
         """Convert any value to a properly formatted string"""
@@ -681,32 +676,60 @@ if __name__ == "__main__":
     from data.utils import connect_to_mongo
     
     # Set up command line arguments
-    parser = argparse.ArgumentParser(description='Process clinical trials data with parallel computation')
-    parser.add_argument('--workers', type=int, default=4, help='Number of worker threads (default: 4)')
-    parser.add_argument('--batch-size', type=int, default=25, help='Batch size for processing (default: 25)')
+    parser = argparse.ArgumentParser(description='Process clinical trials data with configurable filtering')
+    parser.add_argument('--workers', type=int, help='Number of worker threads')
+    parser.add_argument('--batch-size', type=int, help='Batch size for processing')
     parser.add_argument('--condition', type=str, help='Filter by condition (e.g., "COPD")')
+    parser.add_argument('--config', type=str, help='Path to configuration file')
+    parser.add_argument('--max-trials', type=int, help='Maximum number of trials to process')
+    parser.add_argument('--study-type', type=str, help='Study type filter (INTERVENTIONAL, OBSERVATIONAL)')
     args = parser.parse_args()
     
-    # Update query params if condition is specified
-    if args.condition:
-        QUERY_PARAMS["query.cond"] = args.condition
-    
     try:
-        # Initialize MongoDB connection
-        db = connect_to_mongo()
-        if not db:
-            logger.error("Failed to connect to MongoDB")
-            sys.exit(1)
+        # Load configuration
+        config = load_trial_config(args.config)
+        
+        # Override config with command line arguments
+        config_updates = {}
+        if args.condition:
+            config_updates['api_filters'] = {'condition': args.condition}
+        if args.max_trials:
+            config_updates['sampling'] = {'max_trials': args.max_trials}
+        if args.study_type:
+            config_updates['api_filters'] = {
+                'advanced_filters': {'study_type': args.study_type}
+            }
+        if args.workers:
+            config_updates['data_source'] = {
+                'api_config': {'max_workers': args.workers}
+            }
+        if args.batch_size:
+            config_updates['data_source'] = {
+                'api_config': {'chunk_size': args.batch_size}
+            }
+        
+        if config_updates:
+            config.update_config(config_updates)
+        
+        # Optional MongoDB connection (only if needed)
+        db = None
+        if config.data_source.primary == 'mongodb' or config.data_source.fallback == 'mongodb':
+            db = connect_to_mongo()
+            if not db and config.data_source.primary == 'mongodb':
+                logger.error("Failed to connect to MongoDB")
+                sys.exit(1)
         
         start_time = time.time()
         
-        # Initialize adapter with parallel processing configuration
-        adapter = ClinicalTrialsAdapter(
-            max_workers=args.workers,
-            chunk_size=args.batch_size
-        )
+        # Initialize adapter with configuration
+        adapter = ClinicalTrialsAdapter(config_path=args.config)
         
-        logger.info(f"Starting parallel processing with {args.workers} workers")
+        logger.info(f"Starting processing with configuration:")
+        logger.info(f"  - Data source: {config.data_source.primary}")
+        logger.info(f"  - Condition filter: {config.api_filters.condition}")
+        logger.info(f"  - Advanced filters: {config.api_filters.advanced_filters}")
+        logger.info(f"  - Max trials: {config.sampling.max_trials}")
+        logger.info(f"  - Workers: {adapter.max_workers}")
         
         # Process nodes (use a memory-efficient approach)
         node_count = 0
@@ -714,7 +737,11 @@ if __name__ == "__main__":
         
         for node in adapter.get_nodes():
             node_count += 1
-            node_type = node.get_type()
+            # Extract node type from tuple (assuming tuple format)
+            if isinstance(node, tuple) and len(node) >= 2:
+                node_type = node[1]  # Second element is typically the type
+            else:
+                node_type = "unknown"
             node_types[node_type] = node_types.get(node_type, 0) + 1
             
             if node_count % 1000 == 0:
@@ -726,7 +753,13 @@ if __name__ == "__main__":
         
         for edge in adapter.get_edges():
             edge_count += 1
-            edge_type = edge.get_type()
+            # Extract edge type
+            if hasattr(edge, 'get_type'):
+                edge_type = edge.get_type()
+            elif hasattr(edge, 'relationship_label'):
+                edge_type = edge.relationship_label
+            else:
+                edge_type = "unknown"
             edge_types[edge_type] = edge_types.get(edge_type, 0) + 1
             
             if edge_count % 1000 == 0:

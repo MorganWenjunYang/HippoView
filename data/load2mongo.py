@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 # load2mongo.py
 
 import pandas as pd
@@ -230,9 +232,48 @@ def load2mongo(nct_ids):
         client.close()
 
 if __name__ == "__main__":
-    # Read NCT IDs from trialgpt.studies_list.csv
-    studies_df = pd.read_csv(Path("./data/raw/trialgpt/trialgpt.studies_list.csv"))  # Get top 5 NCT IDs
-       
-    nct_ids = studies_df['nct_id'].head(1000).tolist()
-    print(f"fetching {len(nct_ids)} trials: {nct_ids}")
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Load clinical trial data to MongoDB')
+    parser.add_argument('--nct-ids-file', type=str, help='CSV file containing NCT IDs to load')
+    parser.add_argument('--nct-ids', nargs='+', help='List of NCT IDs to load')
+    parser.add_argument('--max-trials', type=int, default=1000, help='Maximum number of trials to load')
+    args = parser.parse_args()
+    
+    nct_ids = []
+    
+    if args.nct_ids_file:
+        # Load NCT IDs from file
+        if args.nct_ids_file.endswith('.csv'):
+            df = pd.read_csv(args.nct_ids_file)
+            nct_ids = df['nct_id'].tolist()
+        else:
+            # Assume text file with one NCT ID per line
+            with open(args.nct_ids_file, 'r') as f:
+                nct_ids = [line.strip() for line in f if line.strip()]
+    elif args.nct_ids:
+        # Use NCT IDs from command line
+        nct_ids = args.nct_ids
+    else:
+        # Default: Read NCT IDs from trialgpt.studies_list.csv
+        try:
+            studies_df = pd.read_csv(Path("./data/raw/trialgpt/trialgpt.studies_list.csv"))
+            nct_ids = studies_df['nct_id'].head(args.max_trials).tolist()
+            print("No NCT IDs specified, using default trialgpt studies list")
+        except FileNotFoundError:
+            print("No NCT IDs file found and no NCT IDs specified")
+            print("Usage: python load2mongo.py --nct-ids-file filtered_nct_ids.csv")
+            print("   or: python load2mongo.py --nct-ids NCT12345678 NCT87654321")
+            exit(1)
+    
+    # Limit to max_trials if specified
+    if args.max_trials and len(nct_ids) > args.max_trials:
+        nct_ids = nct_ids[:args.max_trials]
+        
+    print(f"Loading {len(nct_ids)} trials to MongoDB")
+    if len(nct_ids) <= 10:
+        print(f"NCT IDs: {nct_ids}")
+    else:
+        print(f"NCT IDs: {nct_ids[:5]} ... {nct_ids[-5:]}")
+        
     load2mongo(nct_ids)

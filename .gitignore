@@ -8,3 +8,4 @@ demo_data/
 biocypher-log/
 biocypher-out/
 .vscode/
+*/__pycache__/
