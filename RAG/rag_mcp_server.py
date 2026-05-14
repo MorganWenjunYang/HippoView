@@ -37,8 +37,11 @@ VECTORSTORE_CONFIG = VectorStoreConfig(
     vectorstore_type="elasticsearch",
     embedding_provider="huggingface",
     persist=True,
-    es_url="http://localhost:9200",
-    index_name="copd"
+    es_url=os.getenv(
+        "ES_URL",
+        f"http://{os.getenv('ELASTICSEARCH_HOST', 'localhost')}:{os.getenv('ELASTICSEARCH_PORT', '9200')}"
+    ),
+    index_name=os.getenv("ELASTICSEARCH_INDEX", "clinical_trial")
 )
 
 vector_rag_system = RAGSystem(embedding_provider="huggingface", vectorstore_config=VECTORSTORE_CONFIG)

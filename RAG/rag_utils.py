@@ -348,8 +348,14 @@ class VectorStoreFactory:
             
             # Default ElasticSearch configuration
             es_config = {
-                'es_url': kwargs.get('es_url', 'http://localhost:9200'),
-                'index_name': kwargs.get('index_name', 'clinical_trials'),
+                'es_url': kwargs.get(
+                    'es_url',
+                    os.getenv(
+                        "ES_URL",
+                        f"http://{os.getenv('ELASTICSEARCH_HOST', 'localhost')}:{os.getenv('ELASTICSEARCH_PORT', '9200')}"
+                    )
+                ),
+                'index_name': kwargs.get('index_name', os.getenv("ELASTICSEARCH_INDEX", "clinical_trials")),
                 'embedding': embeddings,
                 'es_user': kwargs.get('es_user'),
                 'es_password': kwargs.get('es_password'),

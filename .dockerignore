@@ -1,0 +1,77 @@
+# Git and version control
+.git
+.gitignore
+
+# Python cache and virtual environments
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+venv/
+env/
+ENV/
+.env
+docker-variables.env
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+secrets/
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Docker files (not needed inside container)
+Dockerfile*
+docker-compose*.yml
+docker-variables.env
+.dockerignore
+
+# Build and deployment scripts
+build.sh
+build-kg.sh
+run_streamlit.sh
+*.sh
+!docker/entrypoints/*.sh
+
+# Logs and outputs
+biocypher-log/
+biocypher-out/
+logs/
+*.log
+
+# Experimental and evaluation data
+experiments_records/
+eval/
+demo_data/
+
+# Analysis and development tools
+analysis_tool/
+
+# Documentation (unless needed at runtime)
+README.md
+diagram/
+*.md
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+
+# Development and testing files
+test/
+tests/
+*_test.py
+test_*.py
+
+# Large data files that might not be needed
+# Uncomment if these are large and not needed at runtime
+# data/ 

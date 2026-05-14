@@ -144,7 +144,7 @@ def create_sidebar():
             st.subheader("🔗 MCP Server")
             mcp_server_url = st.text_input(
                 "MCP Server URL",
-                value="http://127.0.0.1:8000/mcp",
+                value=os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp/"),
                 help="URL of the MCP server for RAG functionality"
             )
             
