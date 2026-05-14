@@ -284,6 +284,166 @@ def get_trial_by_nct_id(nct_id: str) -> str:
         })
 
 @mcp.tool()
+def search_clinical_trials_hybrid(
+    query: str, 
+    top_k: int = 5, 
+    vector_weight: float = 0.7,
+    keyword_weight: float = 0.3,
+    llm_provider: str = "deepseek", 
+    model_name: Optional[str] = None
+) -> str:
+    """
+    Search for clinical trials using hybrid search combining vector similarity and keyword matching.
+    
+    Args:
+        query: The search query about clinical trials
+        top_k: Number of most relevant results to return (default: 5, max: 20)
+        vector_weight: Weight for vector/semantic search (0.0-1.0, default: 0.7)
+        keyword_weight: Weight for keyword/BM25 search (0.0-1.0, default: 0.3)
+        llm_provider: LLM provider to use for answer generation
+        model_name: Specific model name (optional)
+    
+    Returns:
+        JSON string containing hybrid search results and generated answer
+    """
+    try:
+        if not initialize_vector_system():
+            return json.dumps({
+                "success": False,
+                "error": "Failed to initialize vector RAG system",
+                "query": query
+            })
+        
+        if top_k > 20:
+            top_k = 20
+        elif top_k < 1:
+            top_k = 1
+        
+        # Normalize weights
+        total_weight = vector_weight + keyword_weight
+        if total_weight > 0:
+            vector_weight = vector_weight / total_weight
+            keyword_weight = keyword_weight / total_weight
+        else:
+            vector_weight, keyword_weight = 0.7, 0.3
+        
+        # Get the underlying Elasticsearch vectorstore
+        vectorstore = vector_rag_system.vectorstore
+        
+        if not hasattr(vectorstore, '_index_name'):
+            return json.dumps({
+                "success": False,
+                "error": "Elasticsearch vectorstore not properly initialized",
+                "query": query
+            })
+        
+        # Get embeddings for the query
+        embeddings = vector_rag_system.embeddings
+        query_vector = embeddings.embed_query(query)
+        
+        # Build hybrid search query using Elasticsearch Query DSL
+        hybrid_search_body = {
+            "query": {
+                "script_score": {
+                    "query": {
+                        "bool": {
+                            "should": [
+                                {
+                                    "multi_match": {
+                                        "query": query,
+                                        "fields": ["text", "metadata.title", "metadata.condition"],
+                                        "type": "best_fields",
+                                        "boost": keyword_weight
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "script": {
+                        "source": f"""
+                        def vector_score = cosineSimilarity(params.query_vector, 'vector') + 1.0;
+                        def keyword_score = _score;
+                        return {vector_weight} * vector_score + {keyword_weight} * keyword_score;
+                        """,
+                        "params": {
+                            "query_vector": query_vector
+                        }
+                    }
+                }
+            },
+            "size": top_k,
+            "_source": ["text", "metadata"]
+        }
+        
+        # Execute hybrid search
+        try:
+            # Access the underlying Elasticsearch client
+            es_client = vectorstore.client
+            response = es_client.search(
+                index=vectorstore._index_name,
+                body=hybrid_search_body
+            )
+            
+            # Process results
+            hybrid_results = []
+            for i, hit in enumerate(response['hits']['hits']):
+                result = {
+                    "rank": i + 1,
+                    "content": hit["_source"]["text"],
+                    "metadata": hit["_source"].get("metadata", {}),
+                    "score": hit["_score"],
+                    "search_method": "hybrid",
+                    "vector_weight": vector_weight,
+                    "keyword_weight": keyword_weight
+                }
+                hybrid_results.append(result)
+            
+        except Exception as e:
+            # Fallback to standard vector search if hybrid fails
+            logger.warning(f"Hybrid search failed, falling back to vector search: {e}")
+            hybrid_results = vector_rag_system.search(query, top_k)
+            for result in hybrid_results:
+                result["search_method"] = "vector_fallback"
+                result["vector_weight"] = 1.0
+                result["keyword_weight"] = 0.0
+        
+        # Generate answer using hybrid results
+        if llm_provider and hybrid_results:
+            try:
+                answer = vector_rag_system.generate_answer(query, hybrid_results, llm_provider, model_name)
+            except Exception as e:
+                logger.warning(f"Answer generation failed: {e}")
+                answer = "Unable to generate answer from retrieved documents."
+        else:
+            answer = None
+        
+        response = {
+            "success": True,
+            "query": query,
+            "search_method": "hybrid_elasticsearch",
+            "search_config": {
+                "vector_weight": vector_weight,
+                "keyword_weight": keyword_weight,
+                "top_k": top_k
+            },
+            "num_results": len(hybrid_results),
+            "results": hybrid_results,
+            "answer": answer,
+            "llm_provider": llm_provider if answer else None,
+            "model_name": model_name if answer else None
+        }
+        
+        return json.dumps(response, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Error in search_clinical_trials_hybrid: {e}")
+        return json.dumps({
+            "success": False,
+            "error": str(e),
+            "query": query
+        })
+
+@mcp.tool()
 def search_trials_by_condition_vector(condition: str, top_k: int = 10) -> str:
     """
     Search for clinical trials related to a specific medical condition using vector similarity.
@@ -329,6 +489,145 @@ def search_trials_by_condition_vector(condition: str, top_k: int = 10) -> str:
             "success": False,
             "error": str(e),
             "condition": condition
+        })
+
+@mcp.tool()
+def search_clinical_trials_hybrid(
+    query: str, 
+    top_k: int = 5, 
+    vector_weight: float = 0.7,
+    keyword_weight: float = 0.3
+) -> str:
+    """
+    Search for clinical trials using hybrid search combining vector similarity and keyword matching.
+    
+    Args:
+        query: The search query about clinical trials
+        top_k: Number of most relevant results to return (default: 5, max: 20)
+        vector_weight: Weight for vector/semantic search (0.0-1.0, default: 0.7)
+        keyword_weight: Weight for keyword/BM25 search (0.0-1.0, default: 0.3)
+    
+    Returns:
+        JSON string containing hybrid search results
+    """
+    try:
+        if not initialize_vector_system():
+            return json.dumps({
+                "success": False,
+                "error": "Failed to initialize vector RAG system",
+                "query": query
+            })
+        
+        if top_k > 20:
+            top_k = 20
+        elif top_k < 1:
+            top_k = 1
+        
+        # Normalize weights
+        total_weight = vector_weight + keyword_weight
+        if total_weight > 0:
+            vector_weight = vector_weight / total_weight
+            keyword_weight = keyword_weight / total_weight
+        else:
+            vector_weight, keyword_weight = 0.7, 0.3
+        
+        # Try hybrid search with Elasticsearch
+        try:
+            vectorstore = vector_rag_system.vectorstore
+            
+            # Check if we have an Elasticsearch vectorstore
+            if hasattr(vectorstore, 'client') and hasattr(vectorstore, '_index_name'):
+                # Get embeddings for the query
+                embeddings = vector_rag_system.embeddings
+                query_vector = embeddings.embed_query(query)
+                
+                # Hybrid search using configurable retriever approach
+                retriever = vectorstore.as_retriever(
+                    search_kwargs={
+                        "body": {
+                            "query": {
+                                "bool": {
+                                    "should": [
+                                        {
+                                            "script_score": {
+                                                "query": {"match_all": {}},
+                                                "script": {
+                                                    "source": f"cosineSimilarity(params.query_vector, 'vector') + 1.0",
+                                                    "params": {"query_vector": query_vector}
+                                                },
+                                                "boost": vector_weight
+                                            }
+                                        },
+                                        {
+                                            "multi_match": {
+                                                "query": query,
+                                                "fields": ["text^2", "metadata.title^1.5", "metadata.condition"],
+                                                "type": "best_fields",
+                                                "boost": keyword_weight
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "size": top_k
+                        }
+                    }
+                )
+                
+                # Execute hybrid search
+                docs = retriever.invoke(query)
+                
+                # Format results
+                hybrid_results = []
+                for i, doc in enumerate(docs):
+                    result = {
+                        "rank": i + 1,
+                        "content": doc.page_content,
+                        "metadata": doc.metadata,
+                        "search_method": "hybrid_elasticsearch",
+                        "vector_weight": vector_weight,
+                        "keyword_weight": keyword_weight
+                    }
+                    hybrid_results.append(result)
+                
+            else:
+                # Fallback to vector search if not Elasticsearch
+                hybrid_results = vector_rag_system.search(query, top_k)
+                for result in hybrid_results:
+                    result["search_method"] = "vector_fallback"
+                    result["vector_weight"] = 1.0
+                    result["keyword_weight"] = 0.0
+                
+        except Exception as e:
+            # Fallback to standard vector search if hybrid fails
+            logger.warning(f"Hybrid search failed, falling back to vector search: {e}")
+            hybrid_results = vector_rag_system.search(query, top_k)
+            for result in hybrid_results:
+                result["search_method"] = "vector_fallback"
+                result["vector_weight"] = 1.0
+                result["keyword_weight"] = 0.0
+        
+        response = {
+            "success": True,
+            "query": query,
+            "search_method": "hybrid_search",
+            "search_config": {
+                "vector_weight": vector_weight,
+                "keyword_weight": keyword_weight,
+                "top_k": top_k
+            },
+            "num_results": len(hybrid_results),
+            "results": hybrid_results
+        }
+        
+        return json.dumps(response, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Error in search_clinical_trials_hybrid: {e}")
+        return json.dumps({
+            "success": False,
+            "error": str(e),
+            "query": query
         })
 
 # =============================================================================
@@ -811,6 +1110,298 @@ Answer:"""
             "error": str(e),
             "query": query
         })
+    
+@mcp.tool()
+def count_relationships_from_node_and_rank(
+    relationship_type: str, 
+    node_type: str = "auto", 
+    top_k: int = 20,
+    direction: str = "outgoing"
+) -> str:
+    """
+    Count the number of relationships from nodes and rank the results by relationship count.
+    
+    Args:
+        relationship_type: The relationship type to count (e.g., "STUDY_HAS_CONDITION", "STUDY_HAS_INTERVENTION", 
+                          "STUDY_HAS_OUTCOME", "SPONSOR_HAS_STUDY", "CONDITION_HAS_INTERVENTION", 
+                          "CONDITION_HAS_OUTCOME", "INTERVENTION_HAS_OUTCOME", or "ALL" for all types)
+        node_type: Type of nodes to analyze ("ClinicalTrial", "Condition", "Intervention", "Sponsor", "Outcome", or "auto")
+        top_k: Number of top ranked nodes to return (default: 20, max: 50)
+        direction: Direction of relationships ("outgoing", "incoming", "both")
+    
+    Returns:   
+        JSON string containing ranked nodes by relationship count
+    """
+    try:
+        if not initialize_graph_connection():
+            return json.dumps({
+                "success": False,
+                "error": "Failed to connect to graph database"  
+            })
+        
+        # Validate parameters
+        if top_k > 50:
+            top_k = 50
+        elif top_k < 1:
+            top_k = 1
+            
+        valid_relationships = [
+            "STUDY_HAS_CONDITION", "STUDY_HAS_INTERVENTION", "STUDY_HAS_OUTCOME",
+            "SPONSOR_HAS_STUDY", "CONDITION_HAS_INTERVENTION", "CONDITION_HAS_OUTCOME", 
+            "INTERVENTION_HAS_OUTCOME", "Study_has_intervention", "ALL"
+        ]
+        
+        if relationship_type not in valid_relationships:
+            return json.dumps({
+                "success": False,
+                "error": f"Invalid relationship type. Valid types: {valid_relationships}",
+                "relationship_type": relationship_type
+            })
+        
+        # Auto-determine node type based on relationship type if needed
+        if node_type == "auto":
+            relationship_to_node_map = {
+                "STUDY_HAS_CONDITION": "ClinicalTrial",
+                "STUDY_HAS_INTERVENTION": "ClinicalTrial", 
+                "Study_has_intervention": "ClinicalTrial",
+                "STUDY_HAS_OUTCOME": "ClinicalTrial",
+                "SPONSOR_HAS_STUDY": "Sponsor",
+                "CONDITION_HAS_INTERVENTION": "Condition",
+                "CONDITION_HAS_OUTCOME": "Condition",
+                "INTERVENTION_HAS_OUTCOME": "Intervention"
+            }
+            node_type = relationship_to_node_map.get(relationship_type, "ClinicalTrial")
+        
+        # Build the Cypher query based on parameters
+        if relationship_type == "ALL":
+            # Count all relationships for nodes of specified type
+            if direction == "outgoing":
+                cypher_query = f"""
+                MATCH (n:{node_type})-[r]->()
+                RETURN n, 
+                       labels(n) as node_labels,
+                       CASE 
+                           WHEN '{node_type}' = 'ClinicalTrial' THEN n.id
+                           WHEN '{node_type}' = 'Condition' THEN n.name
+                           WHEN '{node_type}' = 'Intervention' THEN n.name
+                           WHEN '{node_type}' = 'Sponsor' THEN n.name
+                           WHEN '{node_type}' = 'Outcome' THEN n.title
+                           ELSE toString(id(n))
+                       END as node_identifier,
+                       count(r) as relationship_count,
+                       collect(DISTINCT type(r)) as relationship_types
+                ORDER BY relationship_count DESC
+                LIMIT $limit
+                """
+            elif direction == "incoming":
+                cypher_query = f"""
+                MATCH ()-[r]->(n:{node_type})
+                RETURN n,
+                       labels(n) as node_labels,
+                       CASE 
+                           WHEN '{node_type}' = 'ClinicalTrial' THEN n.id
+                           WHEN '{node_type}' = 'Condition' THEN n.name
+                           WHEN '{node_type}' = 'Intervention' THEN n.name
+                           WHEN '{node_type}' = 'Sponsor' THEN n.name
+                           WHEN '{node_type}' = 'Outcome' THEN n.title
+                           ELSE toString(id(n))
+                       END as node_identifier,
+                       count(r) as relationship_count,
+                       collect(DISTINCT type(r)) as relationship_types
+                ORDER BY relationship_count DESC
+                LIMIT $limit
+                """
+            else:  # both directions
+                cypher_query = f"""
+                MATCH (n:{node_type})
+                OPTIONAL MATCH (n)-[r1]->()
+                OPTIONAL MATCH ()-[r2]->(n)
+                WITH n, count(r1) + count(r2) as relationship_count,
+                     collect(DISTINCT type(r1)) + collect(DISTINCT type(r2)) as relationship_types
+                RETURN n,
+                       labels(n) as node_labels,
+                       CASE 
+                           WHEN '{node_type}' = 'ClinicalTrial' THEN n.id
+                           WHEN '{node_type}' = 'Condition' THEN n.name
+                           WHEN '{node_type}' = 'Intervention' THEN n.name
+                           WHEN '{node_type}' = 'Sponsor' THEN n.name
+                           WHEN '{node_type}' = 'Outcome' THEN n.title
+                           ELSE toString(id(n))
+                       END as node_identifier,
+                       relationship_count,
+                       [rel_type IN relationship_types WHERE rel_type IS NOT NULL] as relationship_types
+                ORDER BY relationship_count DESC
+                LIMIT $limit
+                """
+        else:
+            # Count specific relationship type
+            if direction == "outgoing":
+                cypher_query = f"""
+                MATCH (n:{node_type})-[r:{relationship_type}]->()
+                RETURN n,
+                       labels(n) as node_labels,
+                       CASE 
+                           WHEN '{node_type}' = 'ClinicalTrial' THEN n.id
+                           WHEN '{node_type}' = 'Condition' THEN n.name
+                           WHEN '{node_type}' = 'Intervention' THEN n.name
+                           WHEN '{node_type}' = 'Sponsor' THEN n.name
+                           WHEN '{node_type}' = 'Outcome' THEN n.title
+                           ELSE toString(id(n))
+                       END as node_identifier,
+                       count(r) as relationship_count,
+                       ['{relationship_type}'] as relationship_types
+                ORDER BY relationship_count DESC
+                LIMIT $limit
+                """
+            elif direction == "incoming":
+                cypher_query = f"""
+                MATCH ()-[r:{relationship_type}]->(n:{node_type})
+                RETURN n,
+                       labels(n) as node_labels,
+                       CASE 
+                           WHEN '{node_type}' = 'ClinicalTrial' THEN n.id
+                           WHEN '{node_type}' = 'Condition' THEN n.name
+                           WHEN '{node_type}' = 'Intervention' THEN n.name
+                           WHEN '{node_type}' = 'Sponsor' THEN n.name
+                           WHEN '{node_type}' = 'Outcome' THEN n.title
+                           ELSE toString(id(n))
+                       END as node_identifier,
+                       count(r) as relationship_count,
+                       ['{relationship_type}'] as relationship_types
+                ORDER BY relationship_count DESC
+                LIMIT $limit
+                """
+            else:  # both directions
+                cypher_query = f"""
+                MATCH (n:{node_type})
+                OPTIONAL MATCH (n)-[r1:{relationship_type}]->()
+                OPTIONAL MATCH ()-[r2:{relationship_type}]->(n)
+                WITH n, count(r1) + count(r2) as relationship_count
+                WHERE relationship_count > 0
+                RETURN n,
+                       labels(n) as node_labels,
+                       CASE 
+                           WHEN '{node_type}' = 'ClinicalTrial' THEN n.id
+                           WHEN '{node_type}' = 'Condition' THEN n.name
+                           WHEN '{node_type}' = 'Intervention' THEN n.name
+                           WHEN '{node_type}' = 'Sponsor' THEN n.name
+                           WHEN '{node_type}' = 'Outcome' THEN n.title
+                           ELSE toString(id(n))
+                       END as node_identifier,
+                       relationship_count,
+                       ['{relationship_type}'] as relationship_types
+                ORDER BY relationship_count DESC
+                LIMIT $limit
+                """
+        
+        # Execute query
+        parameters = {"limit": top_k}
+        raw_results = graph_db.execute_query(cypher_query, parameters)
+        
+        # Format results
+        ranked_nodes = []
+        for i, result in enumerate(raw_results):
+            node_data = result.get("n", {})
+            
+            # Extract node properties based on node type
+            node_properties = {}
+            if node_type == "ClinicalTrial":
+                node_properties = {
+                    "nct_id": node_data.get("id", ""),
+                    "title": node_data.get("title", ""),
+                    "brief_summary": node_data.get("brief_summary", ""),
+                    "condition": node_data.get("condition", ""),
+                    "intervention_name": node_data.get("intervention_name", ""),
+                    "phase": node_data.get("phase", ""),
+                    "status": node_data.get("status", ""),
+                    "enrollment": node_data.get("enrollment", "")
+                }
+            elif node_type == "Condition":
+                node_properties = {
+                    "name": node_data.get("name", ""),
+                    "description": node_data.get("description", "")
+                }
+            elif node_type == "Intervention":
+                node_properties = {
+                    "name": node_data.get("name", ""),
+                    "description": node_data.get("description", "")
+                }
+            elif node_type == "Sponsor":
+                node_properties = {
+                    "name": node_data.get("name", ""),
+                    "agency_class": node_data.get("agency_class", "")
+                }
+            elif node_type == "Outcome":
+                node_properties = {
+                    "title": node_data.get("title", ""),
+                    "description": node_data.get("description", ""),
+                    "type": node_data.get("type", ""),
+                    "time_frame": node_data.get("time_frame", "")
+                }
+            
+            ranked_node = {
+                "rank": i + 1,
+                "node_identifier": result.get("node_identifier", ""),
+                "node_type": node_type,
+                "node_labels": result.get("node_labels", []),
+                "relationship_count": result.get("relationship_count", 0),
+                "relationship_types": result.get("relationship_types", []),
+                "node_properties": node_properties
+            }
+            ranked_nodes.append(ranked_node)
+        
+        # Get summary statistics
+        total_query = f"""
+        MATCH (n:{node_type})
+        RETURN count(n) as total_nodes
+        """
+        total_result = graph_db.execute_query(total_query, {})
+        total_nodes = total_result[0]["total_nodes"] if total_result else 0
+        
+        # Get relationship type statistics if counting all relationships
+        relationship_stats = {}
+        if relationship_type == "ALL":
+            stats_query = f"""
+            MATCH (n:{node_type})-[r]->()
+            RETURN type(r) as relationship_type, count(r) as count
+            ORDER BY count DESC
+            """
+            stats_results = graph_db.execute_query(stats_query, {})
+            relationship_stats = {
+                result["relationship_type"]: result["count"] 
+                for result in stats_results
+            }
+        
+        response = {
+            "success": True,
+            "parameters": {
+                "relationship_type": relationship_type,
+                "node_type": node_type,
+                "direction": direction,
+                "top_k": top_k
+            },
+            "summary": {
+                "total_nodes_of_type": total_nodes,
+                "nodes_returned": len(ranked_nodes),
+                "relationship_type_stats": relationship_stats if relationship_stats else None
+            },
+            "ranked_nodes": ranked_nodes
+        }
+        
+        return json.dumps(response, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Error in count_relationships_from_node_and_rank: {e}")
+        return json.dumps({
+            "success": False,
+            "error": str(e),
+            "parameters": {
+                "relationship_type": relationship_type,
+                "node_type": node_type,
+                "direction": direction,
+                "top_k": top_k
+            }
+        })    
 
 # =============================================================================
 # SYSTEM TOOLS
@@ -942,13 +1533,14 @@ def main():
         logger.warning("Graph database connection failed. Will retry on first request.")
     
     # Run the MCP server
-    logger.info("Starting unified MCP server on http://127.0.0.1:8000/mcp")
+    logger.info("Starting unified MCP server on http://0.0.0.0:8000/mcp")
     logger.info("Available tools:")
     logger.info("  Vector-based: search_clinical_trials, get_trial_answer, get_trial_by_nct_id, search_trials_by_condition_vector")
     logger.info("  Graph-based: search_clinical_trials_graph, get_trial_answer_graph, get_trial_by_nct_id_graph, search_trials_by_condition_graph, search_trials_by_intervention_graph") 
+    logger.info("  Analytics: count_relationships_from_node_and_rank")
     logger.info("  System: get_rag_system_status, get_database_stats")
     
-    mcp.run(transport="streamable-http", host="127.0.0.1", port=8000, path="/mcp")
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=8000, path="/mcp")
 
 if __name__ == "__main__":
     main() 

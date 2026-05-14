@@ -45,7 +45,7 @@
 #   ]
 # }
 
-from utils import fetch_document_by_nct_id, fetch_documents_by_sponsor_name
+from data.utils import fetch_document_by_nct_id, fetch_documents_by_sponsor_name
 
 if __name__ == "__main__":
     document=fetch_document_by_nct_id("NCT01724996")

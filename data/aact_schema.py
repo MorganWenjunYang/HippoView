@@ -1,6 +1,6 @@
 # aact_schema.py
 
-from utils import connect_to_aact, get_list_tables, get_columns_table, get_enumerated_col_values, camel_to_snake
+from data.utils import connect_to_aact, get_list_tables, get_columns_table, get_enumerated_col_values, camel_to_snake
 
 
 enumerated_fields = {

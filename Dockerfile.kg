@@ -2,12 +2,10 @@ ARG BASE_IMAGE
 FROM ${BASE_IMAGE} AS setup-stage
 
 WORKDIR /usr/app/
-COPY ./kn/bc_config.yaml ./kn/kn_schema.yaml ./kn/create_kn.py ./kn/bc_adaptor_ctgovAPI.py ./kn/bc_adaptor_mongodb.py ./kn/
+COPY ./kn/bc_config.yaml ./kn/kn_schema.yaml ./kn/create_kn.py ./kn/bc_adaptor_ctgovAPI.py  ./kn/
 COPY ./data/utils.py /usr/app/data/utils.py
 COPY ./kn/requirements-kn.txt ./data/requirements-dt.txt ./
-# COPY ./kn/startup.sh /usr/app/startup.sh
-# Conditionally copy the patch file if it exists
-RUN if [ -f ./kn/biocypher_entrypoint_patch.sh ]; then cp ./kn/biocypher_entrypoint_patch.sh /usr/app/biocypher_entrypoint_patch.sh; fi
+COPY ./config/ /usr/app/config/
 
 # Set PYTHONPATH
 ENV PYTHONPATH="/usr/app"
@@ -15,26 +13,59 @@ RUN touch ./data/__init__.py
 
 RUN pip install --timeout 100 --retries 3 --trusted-host pypi.org --trusted-host files.pythonhosted.org -i https://mirrors.aliyun.com/pypi/simple/ -r requirements-kn.txt -r requirements-dt.txt
 
-# Build the knowledge graph during image creation
-# THIS IS CRITICAL: We build the graph in the setup stage, not at runtime
-RUN python3 kn/create_kn.py
-
-# Make the startup script executable
-# RUN chmod +x /usr/app/startup.sh
-RUN chmod +x /usr/app/biocypher-out/neo4j-admin-import-call.sh
+# DO NOT build the knowledge graph during image creation
+# This will be done at runtime with the specified configuration
 
 FROM public.ecr.aws/docker/library/neo4j:4.4-enterprise AS deploy-stage
 # Copy all necessary files from the setup stage
 COPY --from=setup-stage /usr/app/ /usr/app/
-# Make sure the biocypher output directory is copied
-COPY --from=setup-stage /usr/app/biocypher-out/ /usr/app/biocypher-out/
-COPY --from=setup-stage /usr/app/biocypher-log/ /usr/app/biocypher-log/
-# COPY --from=setup-stage /usr/app/startup.sh /usr/app/startup.sh
-# # Conditionally copy the patch file
-# RUN mkdir -p /usr/app/
-# # Use a shell command to copy the file instead of COPY instruction
-# RUN test -f /usr/app/biocypher_entrypoint_patch.sh && cp /usr/app/biocypher_entrypoint_patch.sh /usr/app/ || echo "Patch file not found, continuing without it"
+
+# Create a startup script that will build KG and then start Neo4j
+COPY <<EOF /usr/app/startup.sh
+#!/bin/bash
+set -e
+
+echo "🚀 Starting HippoView Knowledge Graph Creation..."
+
+# Default values
+CONFIG_FILE=\${CONFIG_FILE:-""}
+CONDITION=\${CONDITION:-""}
+STUDY_TYPE=\${STUDY_TYPE:-""}
+MAX_TRIALS=\${MAX_TRIALS:-""}
+
+# Build the create_kn.py command
+CMD="python3 /usr/app/kn/create_kn.py"
+
+if [ ! -z "\$CONFIG_FILE" ]; then
+    CMD="\$CMD --config \$CONFIG_FILE"
+fi
+
+if [ ! -z "\$CONDITION" ]; then
+    CMD="\$CMD --condition '\$CONDITION'"
+fi
+
+if [ ! -z "\$STUDY_TYPE" ]; then
+    CMD="\$CMD --study-type \$STUDY_TYPE"
+fi
+
+if [ ! -z "\$MAX_TRIALS" ]; then
+    CMD="\$CMD --max-trials \$MAX_TRIALS"
+fi
+
+echo "🔧 Running: \$CMD"
+eval \$CMD
+
+# Make the import script executable
+chmod +x /usr/app/biocypher-out/neo4j-admin-import-call.sh
+
+echo "📊 Importing data into Neo4j..."
+/usr/app/biocypher-out/neo4j-admin-import-call.sh
+
+echo "🚀 Starting Neo4j..."
+exec /docker-entrypoint.sh neo4j
+EOF
+
+RUN chmod +x /usr/app/startup.sh
 
 # Set the entrypoint to the startup script
-# ENTRYPOINT # Set the entrypoint to run both the import and Neo4j
-ENTRYPOINT ["/bin/bash", "-c", "/usr/app/biocypher-out/neo4j-admin-import-call.sh && exec /docker-entrypoint.sh neo4j"]
+ENTRYPOINT ["/usr/app/startup.sh"]

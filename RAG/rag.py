@@ -186,27 +186,27 @@ def test_rag_system():
     
     try:
         # Test 1: RAG System Initialization
-        print("📋 Test 1: Creating RAG System...")
+        print("* Test 1: Creating RAG System...")
         rag = RAGSystem()
-        print("✅ RAG System created successfully")
+        print("* RAG System created successfully")
         print()
         
         # Test 2: System Initialization 
-        print("🔧 Test 2: Initializing RAG System...")
+        print("* Test 2: Initializing RAG System...")
         init_success = rag.initialize()
         
         if not init_success:
-            print("❌ RAG System initialization failed")
+            print("- ERROR: RAG System initialization failed")
             return False
         
-        print("✅ RAG System initialized successfully")
-        print(f"   - MongoDB connection: ✅")
-        print(f"   - Vectorstore created: ✅") 
-        print(f"   - Retriever setup: ✅")
+        print("* RAG System initialized successfully")
+        print(f"   - MongoDB connection: *")
+        print(f"   - Vectorstore created: *")
+        print(f"   - Retriever setup: *")
         print()
         
         # Test 3: Search Functionality
-        print("🔍 Test 3: Testing Search Functionality...")
+        print("* Test 3: Testing Search Functionality...")
         search_results = {}
         
         for i, query in enumerate(test_queries, 1):
@@ -215,35 +215,35 @@ def test_rag_system():
                 results = rag.search(query, top_k=3)
                 search_results[query] = results
                 
-                print(f"      ✅ Found {len(results)} relevant documents")
+                print(f"      * Found {len(results)} relevant documents")
                 
                 # Show sample result
                 if results:
                     sample_doc = results[0]
                     nct_id = sample_doc['metadata'].get('nct_id', 'N/A')
                     title = sample_doc['metadata'].get('title', 'N/A')
-                    print(f"      📄 Top result: {nct_id} - {title[:60]}...")
+                    print(f"      * Top result: {nct_id} - {title[:60]}...")
                 
                 print()
                 
             except Exception as e:
-                print(f"      ❌ Search failed for '{query}': {str(e)}")
+                print(f"      - ERROR: Search failed for '{query}': {str(e)}")
                 search_results[query] = []
         
-        print("✅ Search functionality test completed")
+        print("* Search functionality test completed")
         print()
         
         # Test 4: Answer Generation
-        print("🤖 Test 4: Testing Answer Generation...")
+        print("* Test 4: Testing Answer Generation...")
         try:
             # Get search results for sample question
             context_docs = rag.search(sample_question, top_k=5)
             
             if context_docs:
-                print(f"   📄 Retrieved {len(context_docs)} context documents")
+                print(f"   * Retrieved {len(context_docs)} context documents")
                 
                 # Generate answer
-                print("   🔄 Generating answer...")
+                print("   - Generating answer...")
                 answer = rag.generate_answer(
                     query=sample_question,
                     context_docs=context_docs,
@@ -251,64 +251,64 @@ def test_rag_system():
                     model_name='deepseek-chat'
                 )
                 
-                print("   ✅ Answer generated successfully")
-                print(f"   📝 Question: {sample_question}")
-                print(f"   💬 Answer: {answer[:200]}...")
+                print("   * Answer generated successfully")
+                print(f"   * Question: {sample_question}")
+                print(f"   * Answer: {answer[:200]}...")
                 print()
                 
             else:
-                print("   ❌ No context documents found for answer generation")
+                print("   - ERROR: No context documents found for answer generation")
                 
         except Exception as e:
-            print(f"   ❌ Answer generation failed: {str(e)}")
+            print(f"   - ERROR: Answer generation failed: {str(e)}")
         
         # Test 5: Performance Summary
-        print("📊 Test 5: Performance Summary...")
+        print("* Test 5: Performance Summary...")
         total_queries = len(test_queries)
         successful_searches = sum(1 for results in search_results.values() if results)
         
-        print(f"   📈 Search Success Rate: {successful_searches}/{total_queries} ({successful_searches/total_queries*100:.1f}%)")
+        print(f"   * Search Success Rate: {successful_searches}/{total_queries} ({successful_searches/total_queries*100:.1f}%)")
         
         # Document statistics
         total_docs_found = sum(len(results) for results in search_results.values())
         avg_docs_per_query = total_docs_found / total_queries if total_queries > 0 else 0
         
-        print(f"   📄 Average Documents per Query: {avg_docs_per_query:.1f}")
-        print(f"   🔍 Total Documents Retrieved: {total_docs_found}")
+        print(f"   * Average Documents per Query: {avg_docs_per_query:.1f}")
+        print(f"   * Total Documents Retrieved: {total_docs_found}")
         print()
         
         # Test 6: Error Handling
-        print("🛡️ Test 6: Testing Error Handling...")
+        print("* Test 6: Testing Error Handling...")
         try:
             # Test with empty query
             empty_results = rag.search("", top_k=3)
-            print("   ✅ Empty query handled gracefully")
+            print("   * Empty query handled gracefully")
             
             # Test with very specific query that might not match
             specific_results = rag.search("extremely rare disease xyz123", top_k=3)
-            print(f"   ✅ Rare query handled gracefully (found {len(specific_results)} results)")
+            print(f"   * Rare query handled gracefully (found {len(specific_results)} results)")
             
         except Exception as e:
-            print(f"   ⚠️ Error handling test: {str(e)}")
+            print(f"   - WARNING: Error handling test: {str(e)}")
         
         print()
         
         # Final Results
-        print("🎯 === Test Results Summary ===")
-        print("✅ RAG System Test PASSED")
-        print(f"   - System initialization: ✅")
-        print(f"   - Search functionality: ✅ ({successful_searches}/{total_queries} queries successful)")
-        print(f"   - Answer generation: ✅")
-        print(f"   - Error handling: ✅")
+        print("* === Test Results Summary ===")
+        print("* RAG System Test PASSED")
+        print(f"   - System initialization: *")
+        print(f"   - Search functionality: * ({successful_searches}/{total_queries} queries successful)")
+        print(f"   - Answer generation: *")
+        print(f"   - Error handling: *")
         print()
-        print("🚀 RAG System is ready for use!")
+        print("* RAG System is ready for use!")
         
         return True
         
     except Exception as e:
-        print(f"❌ RAG System Test FAILED: {str(e)}")
+        print(f"- ERROR: RAG System Test FAILED: {str(e)}")
         import traceback
-        print("📋 Error details:")
+        print("* Error details:")
         traceback.print_exc()
         return False
 

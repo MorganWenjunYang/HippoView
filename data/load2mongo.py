@@ -4,7 +4,7 @@
 
 import pandas as pd
 from sqlalchemy import create_engine
-from utils import connect_to_mongo, connect_to_aact
+from data.utils import connect_to_mongo, connect_to_aact
 from pathlib import Path
 import os
 from datetime import datetime, date

@@ -615,47 +615,70 @@ def create_clinical_trials_rag(vectorstore_type: str = "faiss",
         rag_chain = create_rag_chain(retriever, llm_provider)
         pbar.update(1)
     
-    print("✅ Clinical Trials RAG system ready!")
-    return rag_chain, vectorstore, retriever
+    print("* Clinical Trials RAG system ready!")
+    return {
+        "rag_chain": rag_chain,
+        "retriever": retriever, 
+        "vectorstore": vectorstore,
+        "embedding_provider": embedding_provider,
+        "llm_provider": llm_provider
+    }
 
 def get_available_vectorstore_types() -> List[str]:
-    """Get list of available vector store types."""
-    types = ["faiss"]
+    """Return list of available vector store types based on installed packages."""
+    available = ["faiss"]  # FAISS is always available
     
     try:
-        from langchain_community.vectorstores import ElasticsearchStore
-        types.append("elasticsearch")
+        import elasticsearch
+        available.append("elasticsearch")
     except ImportError:
         pass
     
-    return types
+    try:
+        import chromadb
+        available.append("chroma")
+    except ImportError:
+        pass
+    
+    return available
 
 def get_vectorstore_info(vectorstore: VectorStore) -> Dict[str, Any]:
     """Get information about a vector store."""
-    info = {
+    return {
         "type": type(vectorstore).__name__,
         "module": type(vectorstore).__module__
     }
-    
-    # Add type-specific info
-    if isinstance(vectorstore, FAISS):
-        info.update({
-            "index_type": "FAISS",
-            "in_memory": True
-        })
-    
+
+# Test functions for development
+def test_faiss_rag():
+    """Test FAISS RAG functionality."""
     try:
-        from langchain_community.vectorstores import ElasticsearchStore
-        if isinstance(vectorstore, ElasticsearchStore):
-            info.update({
-                "index_type": "ElasticSearch",
-                "distributed": True,
-                "persistent": True
-            })
-    except ImportError:
-        pass
-    
-    return info
+        config = VectorStoreConfig(vectorstore_type="faiss", persist=True)
+        rag_components = create_clinical_trials_rag(config=config)
+        
+        if rag_components:
+            print("* FAISS RAG system created successfully")
+            return True
+    except Exception as e:
+        print(f"- ERROR: FAISS test failed: {e}")
+        return False
+
+def test_elasticsearch_rag():
+    """Test ElasticSearch RAG functionality."""
+    try:
+        config = VectorStoreConfig(
+            vectorstore_type="elasticsearch",
+            es_url="http://localhost:9200",
+            index_name="clinical_trials_test"
+        )
+        rag_components = create_clinical_trials_rag(config=config)
+        
+        if rag_components:
+            print("* ElasticSearch RAG system created successfully")
+            return True
+    except Exception as e:
+        print(f"- ERROR: ElasticSearch test failed: {e}")
+        return False
 
 # ============================================================================
 # 7. TESTING AND EXAMPLES
@@ -697,5 +720,4 @@ if __name__ == "__main__":
     print(f"\nAvailable vector store types: {get_available_vectorstore_types()}")
 
     
-
 

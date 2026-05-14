@@ -5,9 +5,9 @@ import argparse
 import pandas as pd
 from pathlib import Path
 from biocypher import BioCypher
-from bc_adaptor_ctgovAPI import ClinicalTrialsAdapter
+from kn.bc_adaptor_ctgovAPI import ClinicalTrialsAdapter
 from config.config_manager import load_trial_config
-from zzzzz_bc_adaptor_mongodb import ClinicalTrialsMGDBAdapter
+from kn.zzzzz_bc_adaptor_mongodb import ClinicalTrialsMGDBAdapter
 import concurrent.futures
 
 def main():
@@ -117,11 +117,12 @@ def main():
         output_path = Path(args.export_nct_ids)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
-        df = pd.DataFrame({'nct_id': nct_ids_list})
-        df.to_csv(args.export_nct_ids, index=False)
+        # Save filtered NCT IDs to file
+        with open(args.export_nct_ids, 'w') as f:
+            f.write('\n'.join(nct_ids_list))
         
-        print(f"\n📋 Exported {len(nct_ids_list)} NCT IDs to: {args.export_nct_ids}")
-        print(f"   Use this file with: python data/load2mongo.py --nct-ids-file {args.export_nct_ids}")
+        print(f"\n* Exported {len(nct_ids_list)} NCT IDs to: {args.export_nct_ids}")
+        return
 
     # Generate import call and summary
     bc.write_import_call()

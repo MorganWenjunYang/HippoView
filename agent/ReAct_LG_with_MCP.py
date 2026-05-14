@@ -54,7 +54,7 @@ class AgentState(TypedDict):
 
 # MCPRAGTool class removed - now using direct tool exposure for better LLM decision making
 
-async def create_mcp_rag_tools(mcp_server_url: str = "http://127.0.0.1:8000/mcp") -> List[BaseTool]:
+async def create_mcp_rag_tools(mcp_server_url: str = "http://127.0.0.1:8000/mcp/") -> List[BaseTool]:
     """
     Create MCP RAG tools using Official LangChain MCP Adapters.
     
@@ -70,18 +70,18 @@ async def create_mcp_rag_tools(mcp_server_url: str = "http://127.0.0.1:8000/mcp"
         })
         
         # Get tools using official method - NO CUSTOM WRAPPERS!
-        print("🚀 Loading tools using Official LangChain MCP Adapters...")
+        print("* Loading tools using Official LangChain MCP Adapters...")
         tools = await client.get_tools()
         
-        print(f"✅ Successfully loaded {len(tools)} MCP tools using official adapter!")
-        for i, tool in enumerate(tools, 1):
-            print(f"  {i:2d}. {tool.name}")
+        print(f"* Successfully loaded {len(tools)} MCP tools using official adapter!")
+        print(f"Available tools: {[tool.name for tool in tools]}")
         
         return tools
         
     except Exception as e:
-        print(f"❌ Failed to load MCP tools using official adapter: {e}")
-        print("⚠️  Falling back to empty tools list. Make sure MCP server is running.")
+        print(f"- ERROR: Failed to load MCP tools using official adapter: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 def create_search_tools() -> List[BaseTool]:
@@ -204,7 +204,7 @@ async def check_mcp_server_status(mcp_server_url: str) -> bool:
         return False
 
 async def create_agent_graph(llm_provider="mistral", model_name=None, temperature=0.2, 
-                      mcp_server_url="http://127.0.0.1:8000/mcp"):
+                      mcp_server_url="http://127.0.0.1:8000/mcp/"):
     """Create a LangGraph-based ReAct agent with Official MCP Adapters."""
     
     # Check if MCP server is running using official adapter
